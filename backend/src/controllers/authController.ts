@@ -160,3 +160,53 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+export const updateProfile = async (req: Request, res: Response): Promise<void> => {
+  const { display_name, bio, skills, avatar_url } = req.body;
+  const userId = req.user!.sub;
+
+  try {
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        display_name,
+        bio,
+        skills,
+        avatar_url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ user: profile });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+export const getPublicProfile = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  try {
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, display_name, role, avatar_url, bio, skills, created_at')
+      .eq('id', id)
+      .single();
+
+    if (error || !profile) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    res.json({ profile });
+  } catch (error) {
+    console.error('Get public profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

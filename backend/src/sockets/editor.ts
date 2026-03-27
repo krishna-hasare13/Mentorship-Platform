@@ -68,6 +68,14 @@ export const setupEditorNamespace = (io: Server) => {
       socket.to(room).emit('editor-output', data);
     });
 
+    socket.on('cursor-move', (pos: { line: number, column: number }) => {
+      socket.to(room).emit('cursor-move', {
+        userId: socket.data.user.sub,
+        name: socket.data.user.display_name || 'User',
+        ...pos
+      });
+    });
+
     socket.on('disconnect', () => {
       // Clean up if last user? (Optional for MVP, maybe keep content till session ends)
     });

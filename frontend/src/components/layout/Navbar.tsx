@@ -78,11 +78,17 @@ export const Navbar = () => {
                             >
                                 Dashboard
                             </Link>
+                            <Link 
+                                href="/settings" 
+                                className="text-sm font-medium text-white/70 hover:text-white px-2"
+                            >
+                                Settings
+                            </Link>
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
                                 onClick={signOut}
-                                className="px-5 py-2 text-sm font-bold text-white bg-destructive/10 border border-destructive/20 rounded-full hover:bg-destructive/20 transition-all"
+                                className="px-5 py-2 text-sm font-bold text-white/70 hover:text-white bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"
                             >
                                 Sign Out
                             </motion.button>
@@ -101,7 +107,7 @@ export const Navbar = () => {
                             >
                                 <Link
                                     href="/register"
-                                    className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white bg-primary rounded-full hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all flex gap-2"
+                                    className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-primary-foreground bg-primary rounded-full hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] transition-all flex gap-2"
                                 >
                                     Join Now <ArrowRight className="w-4 h-4" />
                                 </Link>
@@ -124,7 +130,7 @@ export const Navbar = () => {
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        className="fixed inset-0 bg-[#050810]/95 backdrop-blur-2xl z-[70] pt-24 px-6 md:hidden"
+                        className="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-2xl z-[70] pt-24 px-6 md:hidden"
                         initial={{ opacity: 0, x: "100%" }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: "100%" }}
@@ -171,9 +177,16 @@ export const Navbar = () => {
                                         >
                                             Dashboard
                                         </Link>
+                                        <Link
+                                            href="/settings"
+                                            className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white glass rounded-2xl"
+                                            onClick={toggleMenu}
+                                        >
+                                            Settings
+                                        </Link>
                                         <button
                                             onClick={() => { signOut(); toggleMenu(); }}
-                                            className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white bg-destructive/10 border border-destructive/20 rounded-2xl"
+                                            className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white/50 bg-white/5 border border-white/10 rounded-2xl"
                                         >
                                             Sign Out
                                         </button>
@@ -189,7 +202,7 @@ export const Navbar = () => {
                                         </Link>
                                         <Link
                                             href="/register"
-                                            className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white bg-primary rounded-2xl shadow-xl flex gap-2"
+                                            className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-primary-foreground bg-primary rounded-2xl shadow-xl flex gap-2"
                                             onClick={toggleMenu}
                                         >
                                             Join Now <ArrowRight className="w-5 h-5" />

@@ -158,8 +158,8 @@ export const CosmosHero = () => {
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     time: { value: 0 },
-                    color1: { value: new THREE.Color(0x6366f1) }, // indigo-500
-                    color2: { value: new THREE.Color(0xec4899) }, // pink-500
+                    color1: { value: new THREE.Color(0xffffff) }, // white
+                    color2: { value: new THREE.Color(0x2563eb) }, // blue
                     opacity: { value: 0.2 }
                 },
                 vertexShader: `
@@ -194,10 +194,10 @@ export const CosmosHero = () => {
 
         const createMountains = () => {
             const layers = [
-                { z: -50, h: 60, col: 0x050810, opt: 1 },
-                { z: -100, h: 80, col: 0x1e1b4b, opt: 0.8 },
-                { z: -150, h: 100, col: 0x312e81, opt: 0.6 },
-                { z: -200, h: 120, col: 0x4338ca, opt: 0.4 }
+                { z: -50, h: 60, col: 0x0a0a0a, opt: 1 },
+                { z: -100, h: 80, col: 0x171717, opt: 0.8 },
+                { z: -150, h: 100, col: 0x262626, opt: 0.6 },
+                { z: -200, h: 120, col: 0x404040, opt: 0.4 }
             ];
 
             layers.forEach((layer, i) => {
@@ -296,7 +296,7 @@ export const CosmosHero = () => {
     }, []);
 
     return (
-        <div ref={containerRef} className="relative w-full h-[300vh] bg-black overflow-x-hidden">
+        <div ref={containerRef} className="relative w-full h-[300vh] bg-background overflow-x-hidden">
             <canvas ref={canvasRef} className="fixed top-0 left-0 w-full h-full pointer-events-none" />
             
             {/* Sections */}
@@ -308,7 +308,7 @@ export const CosmosHero = () => {
                     <p>Where learning meets elite mentorship,</p>
                     <p>we shape the developers of tomorrow.</p>
                 </div>
-                <Link href="/register" className="mt-8 md:mt-12 px-8 md:px-10 py-3 md:py-4 bg-primary text-white rounded-full font-bold text-base md:text-lg hover:shadow-[0_0_40px_rgba(99,102,241,0.5)] transition-all">
+                <Link href="/register" className="mt-8 md:mt-12 px-8 md:px-10 py-3 md:py-4 bg-primary text-black rounded-full font-bold text-base md:text-lg hover:shadow-[0_0_40px_rgba(255,255,255,0.4)] transition-all">
                     GET STARTED
                 </Link>
             </section>

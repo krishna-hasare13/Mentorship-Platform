@@ -3,6 +3,7 @@ export interface UserPayload {
   email: string;
   role: 'mentor' | 'student';
   display_name?: string;
+  avatar_url?: string;
   iat?: number;
   exp?: number;
 }
@@ -12,7 +13,10 @@ export interface Session {
   mentor_id: string;
   title: string;
   invite_code: string;
-  status: 'active' | 'ended';
+  status: 'active' | 'ended' | 'scheduled';
+  scheduled_at?: string;
+  max_participants?: number;
+  waiting_room_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +35,9 @@ export interface Profile {
   email: string;
   role: 'mentor' | 'student';
   display_name: string;
+  avatar_url?: string;
+  bio?: string;
+  skills?: string[];
   created_at: string;
 }
 

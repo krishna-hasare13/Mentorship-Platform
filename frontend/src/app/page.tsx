@@ -26,11 +26,11 @@ const FeatureCard = ({ icon: Icon, title, description, delay }: any) => (
 
 export default function LandingPage() {
   return (
-    <main className="relative bg-black overflow-hidden">
+    <main className="relative bg-background overflow-hidden">
       <Navbar />
       <CosmosHero />
       
-      <div className="relative z-50 bg-black/80 backdrop-blur-xl border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,1)]">
+      <div className="relative z-50 bg-background/80 backdrop-blur-xl border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,1)]">
         {/* Features Section */}
         <section id="features" className="px-4 md:px-6 py-24 md:py-40 max-w-7xl mx-auto">
           <div className="text-center mb-16 md:mb-24 px-4">

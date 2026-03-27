@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, 
@@ -27,15 +27,19 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, session: authSession, profile, loading, signOut } = useAuth();
   const [sessions, setSessions] = useState<any[]>([]);
   const [fetchingSessions, setFetchingSessions] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [sessionTitle, setSessionTitle] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [maxParticipants, setMaxParticipants] = useState('5');
+  const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
@@ -45,19 +49,18 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (user) {
+    if (authSession) {
       fetchSessions();
     }
-  }, [user]);
+  }, [authSession, pathname]);
 
   const fetchSessions = async () => {
+    if (!authSession) return;
     setFetchingSessions(true);
     try {
-      const { data: { session } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
-      
       const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions`, {
         headers: {
-          'Authorization': `Bearer ${session?.access_token}`
+          'Authorization': `Bearer ${authSession.access_token}`
         }
       });
       const data = await res.json();
@@ -81,7 +84,12 @@ export default function DashboardPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`
         },
-        body: JSON.stringify({ title: sessionTitle })
+        body: JSON.stringify({ 
+          title: sessionTitle, 
+          scheduled_at: scheduledAt || null, 
+          max_participants: parseInt(maxParticipants) || null,
+          waiting_room_enabled: waitingRoomEnabled
+        })
       });
       
       const data = await res.json();
@@ -267,15 +275,50 @@ export default function DashboardPage() {
               
               <form onSubmit={showCreateModal ? handleCreateSession : handleJoinSession} className="space-y-6">
                 {showCreateModal ? (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-white/70">Session Title</label>
-                    <input 
-                      required
-                      value={sessionTitle}
-                      onChange={e => setSessionTitle(e.target.value)}
-                      className="input-field w-full" 
-                      placeholder="e.g. React & TypeScript Workshop"
-                    />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-white/70">Session Title</label>
+                      <input 
+                        required
+                        value={sessionTitle}
+                        onChange={e => setSessionTitle(e.target.value)}
+                        className="input-field w-full" 
+                        placeholder="e.g. React & TypeScript Workshop"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-white/70">Schedule (Optional)</label>
+                        <input 
+                          type="datetime-local"
+                          value={scheduledAt}
+                          onChange={e => setScheduledAt(e.target.value)}
+                          className="input-field w-full text-xs" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-white/70">Max Students</label>
+                        <input 
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={maxParticipants}
+                          onChange={e => setMaxParticipants(e.target.value)}
+                          className="input-field w-full" 
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-2xl cursor-pointer hover:bg-white/10 transition-all">
+                          <input 
+                            type="checkbox"
+                            checked={waitingRoomEnabled}
+                            onChange={e => setWaitingRoomEnabled(e.target.checked)}
+                            className="w-5 h-5 rounded border-white/20 bg-white/5 text-primary focus:ring-0" 
+                          />
+                          <span className="text-sm font-medium text-white/70">Enable Waiting Room</span>
+                        </label>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2">

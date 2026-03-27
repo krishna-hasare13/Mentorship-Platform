@@ -56,7 +56,7 @@ export default function LoginPage() {
                     p.v = Math.random() * 0.25 + 0.05;
                     p.o = Math.random() * 0.35 + 0.15;
                 }
-                ctx.fillStyle = `rgba(99, 102, 241, ${p.o})`; // Using primary color for particles
+                ctx.fillStyle = `rgba(255, 255, 255, ${p.o})`; // Using primary color for particles
                 ctx.fillRect(p.x, p.y, 1, 3);
             });
             raf = requestAnimationFrame(draw);
@@ -116,7 +116,7 @@ export default function LoginPage() {
             `}</style>
 
             {/* Background elements */}
-            <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(99,102,241,0.08),transparent_60%)]" />
+            <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(255,255,255,0.03),transparent_60%)]" />
 
             {/* Particles */}
             <canvas
@@ -220,9 +220,9 @@ export default function LoginPage() {
                                     Remember me
                                 </label>
                             </div>
-                            <a href="#" className="text-xs text-white/40 hover:text-primary transition-colors font-semibold">
+                            <Link href="/forgot-password" className="text-xs text-white/40 hover:text-primary transition-colors font-semibold">
                                 Forgot password?
-                            </a>
+                            </Link>
                         </div>
 
                         <button

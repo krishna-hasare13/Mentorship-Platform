@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { Socket } from 'socket.io-client';
-import { Code2, Settings, Play, CheckCircle, ChevronDown } from 'lucide-react';
+import { Code2, Settings, Play, CheckCircle, ChevronDown, User } from 'lucide-react';
+import { useRef } from 'react';
 
 const SUPPORTED_LANGUAGES = [
   { id: 'python', name: 'Python', compiler: 'cpython-3.12.7', defaultCode: 'def main():\n    print("Hello from Python!")\n\nif __name__ == "__main__":\n    main()' },
@@ -17,6 +18,9 @@ export const EditorPanel = ({ socket, initialLanguage = 'python' }: { socket: So
   const [version, setVersion] = useState(0);
   const [isExecuting, setIsExecuting] = useState(false);
   const [output, setOutput] = useState<{ stdout: string; stderr: string; code: number } | null>(null);
+  const editorRef = useRef<any>(null);
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, { line: number, column: number, name: string }>>({});
+  const decorationsRef = useRef<Record<string, string[]>>({});
 
   useEffect(() => {
     if (!socket) return;
@@ -47,13 +51,71 @@ export const EditorPanel = ({ socket, initialLanguage = 'python' }: { socket: So
       setOutput(data);
     });
 
+    socket.on('cursor-move', (data: { userId: string, line: number, column: number, name: string }) => {
+      setRemoteCursors(prev => ({
+        ...prev,
+        [data.userId]: { line: data.line, column: data.column, name: data.name }
+      }));
+    });
+
     return () => {
       socket.off('editor-sync');
       socket.off('editor-change');
       socket.off('language-change');
       socket.off('editor-output');
+      socket.off('cursor-move');
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    Object.entries(remoteCursors).forEach(([userId, pos]) => {
+      const newDecorations = [
+        {
+          range: { startLineNumber: pos.line, startColumn: pos.column, endLineNumber: pos.line, endColumn: pos.column + 1 },
+          options: {
+            className: `remote-cursor-${userId}`,
+            beforeContentClassName: `remote-cursor-label-${userId}`,
+            hoverMessage: { value: pos.name }
+          }
+        }
+      ];
+
+      decorationsRef.current[userId] = editorRef.current.deltaDecorations(
+        decorationsRef.current[userId] || [],
+        newDecorations
+      );
+
+      // Injecting dynamic styles for this cursor
+      if (!document.getElementById(`cursor-style-${userId}`)) {
+        const style = document.createElement('style');
+        style.id = `cursor-style-${userId}`;
+        const color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+        style.innerHTML = `
+          .remote-cursor-${userId} {
+            border-left: 2px solid ${color};
+            margin-left: -1px;
+          }
+          .remote-cursor-label-${userId}::after {
+            content: "${pos.name}";
+            position: absolute;
+            top: -15px;
+            left: 0;
+            background: ${color};
+            color: white;
+            font-size: 8px;
+            padding: 1px 4px;
+            border-radius: 2px;
+            white-space: nowrap;
+            z-index: 10;
+            opacity: 0.7;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    });
+  }, [remoteCursors]);
 
   const handleEditorChange = (newValue: string | undefined) => {
     if (newValue === undefined || !socket) return;
@@ -138,7 +200,7 @@ export const EditorPanel = ({ socket, initialLanguage = 'python' }: { socket: So
               className="appearance-none bg-black/20 border border-white/10 text-white text-sm font-bold uppercase tracking-widest pl-3 pr-8 py-1.5 rounded-lg outline-none cursor-pointer hover:bg-black/40 transition-all focus:border-primary/50"
             >
               {SUPPORTED_LANGUAGES.map(lang => (
-                <option key={lang.id} value={lang.id} className="bg-[#050810] text-white">
+                <option key={lang.id} value={lang.id} className="bg-background text-white">
                   {lang.name}
                 </option>
               ))}
@@ -166,13 +228,24 @@ export const EditorPanel = ({ socket, initialLanguage = 'python' }: { socket: So
         </div>
       </div>
       
-      <div className="flex flex-col flex-1 min-h-0 bg-[#050810]">
+      <div className="flex flex-col flex-1 min-h-0 bg-background">
         <div className={output ? "h-2/3 border-b border-white/10" : "h-full"}>
           <Editor
             height="100%"
             language={language}
             theme="vs-dark"
             value={value}
+            onMount={(editor) => {
+              editorRef.current = editor;
+              editor.onDidChangeCursorPosition((e: any) => {
+                if (socket) {
+                  socket.emit('cursor-move', {
+                    line: e.position.lineNumber,
+                    column: e.position.column
+                  });
+                }
+              });
+            }}
             onChange={handleEditorChange}
             options={{
               minimap: { enabled: false },

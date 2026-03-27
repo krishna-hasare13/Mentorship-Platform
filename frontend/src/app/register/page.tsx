@@ -59,7 +59,7 @@ export default function RegisterPage() {
                     p.v = Math.random() * 0.25 + 0.05;
                     p.o = Math.random() * 0.35 + 0.15;
                 }
-                ctx.fillStyle = `rgba(99, 102, 241, ${p.o})`;
+                ctx.fillStyle = `rgba(255, 255, 255, ${p.o})`;
                 ctx.fillRect(p.x, p.y, 1, 3);
             });
             raf = requestAnimationFrame(draw);
@@ -137,10 +137,10 @@ export default function RegisterPage() {
                 
                 .custom-scrollbar::-webkit-scrollbar { width: 5px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.2); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
             `}</style>
 
-            <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(99,102,241,0.08),transparent_60%)]" />
+            <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(255,255,255,0.03),transparent_60%)]" />
 
             <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-40 mix-blend-screen pointer-events-none" />
 
@@ -228,7 +228,7 @@ export default function RegisterPage() {
                                         role === 'student' ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "border-white/5 bg-white/5 hover:border-white/20"
                                     )}
                                 >
-                                    <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", role === 'student' ? "bg-primary text-white" : "bg-white/5 text-white/40")}>
+                                    <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", role === 'student' ? "bg-primary text-primary-foreground" : "bg-white/5 text-white/40")}>
                                         <GraduationCap className="w-5 h-5" />
                                     </div>
                                     <div>
@@ -244,7 +244,7 @@ export default function RegisterPage() {
                                         role === 'mentor' ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "border-white/5 bg-white/5 hover:border-white/20"
                                     )}
                                 >
-                                    <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", role === 'mentor' ? "bg-primary text-white" : "bg-white/5 text-white/40")}>
+                                    <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center", role === 'mentor' ? "bg-primary text-primary-foreground" : "bg-white/5 text-white/40")}>
                                         <BookOpen className="w-5 h-5" />
                                     </div>
                                     <div>

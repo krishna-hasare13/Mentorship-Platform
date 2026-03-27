@@ -96,9 +96,9 @@ export default function SessionRoomPage() {
           'Authorization': `Bearer ${authSession?.access_token}`
         }
       });
-      router.push('/');
+      window.location.href = '/dashboard';
     } catch (err) {
-      router.push('/');
+      window.location.href = '/dashboard';
     }
   };
 
@@ -114,12 +114,12 @@ export default function SessionRoomPage() {
   const isMentor = profile?.id === session.mentor_id;
 
   return (
-    <main className="min-h-screen lg:h-screen flex flex-col pt-2 bg-[#050810] overflow-x-hidden lg:overflow-hidden">
+    <main className="min-h-screen lg:h-screen flex flex-col pt-2 bg-background overflow-x-hidden lg:overflow-hidden">
       {/* Top Bar */}
       <header className="px-4 md:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
           <button 
-            onClick={() => router.push('/')}
+            onClick={() => { window.location.href = '/dashboard'; }}
             className="p-1.5 md:p-2 hover:bg-white/5 rounded-xl transition-all text-white/30 hover:text-white shrink-0"
           >
             <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
@@ -156,7 +156,7 @@ export default function SessionRoomPage() {
           )}
 
           <button 
-            onClick={() => router.push('/')}
+            onClick={() => { window.location.href = '/dashboard'; }}
             className="glass p-2 rounded-xl hover:bg-white/10 transition-all border-white/5"
           >
             <LogOut className="w-4 h-4 md:w-5 md:h-5 text-white/50" />

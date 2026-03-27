@@ -7,26 +7,29 @@ const generateInviteCode = (): string => {
 };
 
 export const createSession = async (req: Request, res: Response): Promise<void> => {
-  const { title, language = 'javascript' } = req.body;
-  const mentorId = req.user!.sub;
-
-  if (!title) {
-    res.status(400).json({ error: 'Session title is required' });
-    return;
-  }
-
-  try {
-    const inviteCode = generateInviteCode();
-
-    const { data: session, error } = await supabaseAdmin
-      .from('sessions')
-      .insert({
-        mentor_id: mentorId,
-        title,
-        invite_code: inviteCode,
-        language,
-        status: 'active',
-      })
+    const { title, language = 'javascript', scheduled_at, max_participants, waiting_room_enabled } = req.body;
+    const mentorId = req.user!.sub;
+  
+    if (!title) {
+      res.status(400).json({ error: 'Session title is required' });
+      return;
+    }
+  
+    try {
+      const inviteCode = generateInviteCode();
+  
+      const { data: session, error } = await supabaseAdmin
+        .from('sessions')
+        .insert({
+          mentor_id: mentorId,
+          title,
+          invite_code: inviteCode,
+          language,
+          status: scheduled_at ? 'scheduled' : 'active',
+          scheduled_at: scheduled_at || null,
+          max_participants: max_participants || null,
+          waiting_room_enabled: waiting_room_enabled || false,
+        })
       .select('*')
       .single();
 
@@ -133,15 +136,31 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Check participant limit
+    if (session.max_participants) {
+      const { count } = await supabaseAdmin
+        .from('session_participants')
+        .select('*', { count: 'exact', head: true })
+        .eq('session_id', session.id);
+
+      if (count && count >= session.max_participants) {
+        res.status(403).json({ error: 'Session is full' });
+        return;
+      }
+    }
+
+    const status = session.waiting_room_enabled ? 'pending' : 'joined';
+
     // Add participant record (upsert to handle reconnects)
     await supabaseAdmin
       .from('session_participants')
       .upsert({
         session_id: session.id,
         student_id: studentId,
+        status,
       }, { onConflict: 'session_id,student_id' });
 
-    res.json({ session });
+    res.json({ session, participant_status: status });
   } catch (error) {
     console.error('Join session error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -211,6 +230,94 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     res.json({ messages });
   } catch (error) {
     console.error('Get messages error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+export const getParticipants = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  try {
+    const { data: participants, error } = await supabaseAdmin
+      .from('session_participants')
+      .select(`
+        *,
+        profiles!session_participants_student_id_fkey(display_name, avatar_url)
+      `)
+      .eq('session_id', id);
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ participants });
+  } catch (error) {
+    console.error('Get participants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateParticipantStatus = async (req: Request, res: Response): Promise<void> => {
+  const { id, studentId } = req.params;
+  const { status } = req.body; // 'joined' | 'rejected' | 'blocked'
+  const mentorId = req.user!.sub;
+
+  if (!['joined', 'rejected', 'blocked'].includes(status)) {
+    res.status(400).json({ error: 'Invalid status' });
+    return;
+  }
+
+  try {
+    // 1. Verify mentor owns the session
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('mentor_id')
+      .eq('id', id)
+      .single();
+
+    if (!session || session.mentor_id !== mentorId) {
+      res.status(403).json({ error: 'Not authorized' });
+      return;
+    }
+
+    // 2. Update participant
+    const { error } = await supabaseAdmin
+      .from('session_participants')
+      .update({ status })
+      .eq('session_id', id)
+      .eq('student_id', studentId);
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ message: `Participant ${status}` });
+  } catch (error) {
+    console.error('Update participant error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+export const getPublicUserSessions = async (req: Request, res: Response): Promise<void> => {
+  const { userId } = req.params;
+
+  try {
+    const { data: sessions, error } = await supabaseAdmin
+      .from('sessions')
+      .select('*')
+      .eq('mentor_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ sessions });
+  } catch (error) {
+    console.error('Get public user sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
