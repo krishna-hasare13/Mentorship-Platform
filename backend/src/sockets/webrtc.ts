@@ -1,17 +1,29 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { UserPayload } from '../types';
+import { supabaseAdmin } from '../config/supabase';
 
 export const setupWebRTCNamespace = (io: Server) => {
   const webrtcNamespace = io.of('/webrtc');
 
-  webrtcNamespace.use((socket: Socket, next) => {
-    const token = socket.handshake.auth.token;
+  webrtcNamespace.use(async (socket: Socket, next) => {
+    let token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error'));
 
+    if (token.startsWith('"') && token.endsWith('"')) {
+      token = token.slice(1, -1);
+    }
+
     try {
-      const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET!) as UserPayload;
-      socket.data.user = decoded;
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      if (error || !user) throw new Error('Authentication error');
+
+      socket.data.user = {
+        sub: user.id,
+        email: user.email!,
+        role: user.user_metadata?.role || 'student',
+        display_name: user.user_metadata?.display_name
+      };
       next();
     } catch (err) {
       next(new Error('Authentication error'));
@@ -28,8 +40,10 @@ export const setupWebRTCNamespace = (io: Server) => {
     const room = `session:${sessionId}`;
     socket.join(room);
 
-    // Notify others that a new peer joined
-    socket.to(room).emit('peer-joined', { userId: socket.data.user.sub });
+    // Notify others that a new peer joined ONLY when they are explicitly ready
+    socket.on('ready', () => {
+      socket.to(room).emit('peer-joined', { userId: socket.data.user.sub });
+    });
 
     // Signaling relay
     socket.on('signal', (data: { target: string; signal: any }) => {

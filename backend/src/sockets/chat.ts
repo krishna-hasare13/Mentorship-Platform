@@ -7,13 +7,24 @@ export const setupChatNamespace = (io: Server) => {
   const chatNamespace = io.of('/chat');
 
   // Auth middleware for namespace
-  chatNamespace.use((socket: Socket, next) => {
-    const token = socket.handshake.auth.token;
+  chatNamespace.use(async (socket: Socket, next) => {
+    let token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error'));
 
+    if (token.startsWith('"') && token.endsWith('"')) {
+      token = token.slice(1, -1);
+    }
+
     try {
-      const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET!) as UserPayload;
-      socket.data.user = decoded;
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      if (error || !user) throw new Error('Authentication error');
+
+      socket.data.user = {
+        sub: user.id,
+        email: user.email!,
+        role: user.user_metadata?.role || 'student',
+        display_name: user.user_metadata?.display_name
+      };
       next();
     } catch (err) {
       next(new Error('Authentication error'));

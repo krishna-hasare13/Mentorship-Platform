@@ -20,7 +20,9 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
     socket.on('signal', ({ userId, signal }: { userId: string; signal: any }) => {
       console.log('Received signal from', userId);
       if (peerRef.current) {
-        peerRef.current.signal(signal);
+        if (!peerRef.current.destroyed) {
+          peerRef.current.signal(signal);
+        }
       } else {
         // Peer received offer first
         createPeer(userId, socket, false, signal);
@@ -28,22 +30,25 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
     });
 
     socket.on('peer-left', () => {
-      setRemoteStream(null);
-      if (peerRef.current) {
-        peerRef.current.destroy();
-        peerRef.current = null;
-      }
+      // Socket dropped, but WebRTC might still be alive. 
+      // Rely on the native WebRTC 'close' event for actual teardown.
+      console.log('Signaling peer left. P2P connection may still be alive.');
     });
 
     const createPeer = (userId: string, socket: Socket, initiator: boolean, signal?: any) => {
       const peer = new Peer({
         initiator,
-        trickle: false,
+        trickle: true,
         stream: localStream,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { 
+              urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], 
+              username: 'openrelayproject', 
+              credential: 'openrelayproject' 
+            }
           ]
         }
       });
@@ -61,12 +66,23 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
         console.error('Peer error:', err);
       });
 
-      if (signal) {
+      peer.on('close', () => {
+        console.log('WebRTC P2P connection closed natively.');
+        setRemoteStream(null);
+        if (peerRef.current === peer) {
+          peerRef.current = null;
+        }
+      });
+
+      if (signal && !peer.destroyed) {
         peer.signal(signal);
       }
 
       peerRef.current = peer;
     };
+
+    // Tell the room we are fully ready to receive offers
+    socket.emit('ready');
 
     return () => {
       socket.off('peer-joined');

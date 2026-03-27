@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Mic, MicOff, Video, VideoOff, Maximize2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaStream | null, remoteStream: MediaStream | null }) => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
 
@@ -40,13 +42,34 @@ export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaSt
   return (
     <div className="flex flex-col gap-4 h-full">
       {/* Remote Video (Primary) */}
-      <div className="relative flex-1 glass rounded-2xl overflow-hidden bg-black/40 border border-white/10 group">
+      <div ref={containerRef} className="relative flex-1 glass rounded-2xl overflow-hidden bg-black/40 border border-white/10 group">
         {remoteStream ? (
           <video
-            ref={remoteVideoRef}
+            ref={(node) => {
+              if (node && remoteStream) {
+                if (node.srcObject !== remoteStream) {
+                  node.srcObject = remoteStream;
+                  const playPromise = node.play();
+                  if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                      if (e.name !== 'AbortError') console.error("Autoplay prevented:", e);
+                    });
+                  }
+                }
+              }
+              remoteVideoRef.current = node;
+            }}
             autoPlay
             playsInline
-            className="w-full h-full object-cover"
+            onLoadedMetadata={(e) => {
+              const playPromise = e.currentTarget.play();
+              if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                  if (err.name !== 'AbortError') console.error(err);
+                });
+              }
+            }}
+            className="w-full h-full object-contain"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-white/20 gap-4">
@@ -57,22 +80,29 @@ export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaSt
           </div>
         )}
 
-        {/* Local Video Overlay */}
-        <div className="absolute bottom-4 right-4 w-32 md:w-48 aspect-video glass rounded-xl overflow-hidden border border-white/20 shadow-2xl z-20">
+        {/* Local Video Overlay (Draggable) */}
+        <motion.div 
+          drag
+          dragConstraints={containerRef}
+          dragElastic={0.1}
+          dragMomentum={false}
+          whileDrag={{ scale: 1.05, cursor: 'grabbing' }}
+          className="absolute bottom-4 right-4 w-32 md:w-48 aspect-video glass rounded-xl overflow-hidden border border-white/20 shadow-2xl z-20 cursor-grab touch-none"
+        >
           {localStream ? (
             <video
               ref={localVideoRef}
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover pointer-events-none"
             />
           ) : (
-            <div className="w-full h-full bg-black/60 flex items-center justify-center">
+            <div className="w-full h-full bg-black/60 flex items-center justify-center pointer-events-none">
               <VideoOff className="w-6 h-6 text-white/20" />
             </div>
           )}
-        </div>
+        </motion.div>
 
         {/* Overlay Controls */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-6 py-3 glass rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">

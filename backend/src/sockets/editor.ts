@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { UserPayload } from '../types';
+import { supabaseAdmin } from '../config/supabase';
 
 interface EditorState {
   content: string;
@@ -13,13 +14,24 @@ const sessionContent = new Map<string, EditorState>();
 export const setupEditorNamespace = (io: Server) => {
   const editorNamespace = io.of('/editor');
 
-  editorNamespace.use((socket: Socket, next) => {
-    const token = socket.handshake.auth.token;
+  editorNamespace.use(async (socket: Socket, next) => {
+    let token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error'));
 
+    if (token.startsWith('"') && token.endsWith('"')) {
+      token = token.slice(1, -1);
+    }
+
     try {
-      const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET!) as UserPayload;
-      socket.data.user = decoded;
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      if (error || !user) throw new Error('Authentication error');
+
+      socket.data.user = {
+        sub: user.id,
+        email: user.email!,
+        role: user.user_metadata?.role || 'student',
+        display_name: user.user_metadata?.display_name
+      };
       next();
     } catch (err) {
       next(new Error('Authentication error'));
@@ -46,6 +58,14 @@ export const setupEditorNamespace = (io: Server) => {
       
       // Broadcast to others in the room
       socket.to(room).emit('editor-change', data);
+    });
+
+    socket.on('language-change', (language: string) => {
+      socket.to(room).emit('language-change', language);
+    });
+
+    socket.on('editor-output', (data: any) => {
+      socket.to(room).emit('editor-output', data);
     });
 
     socket.on('disconnect', () => {

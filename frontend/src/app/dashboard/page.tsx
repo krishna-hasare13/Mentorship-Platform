@@ -17,7 +17,10 @@ import {
   Copy,
   Check,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  ArrowRight,
+  Layers,
+  User
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
