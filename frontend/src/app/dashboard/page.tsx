@@ -20,7 +20,8 @@ import {
   ChevronRight,
   ArrowRight,
   Layers,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -29,6 +30,7 @@ import { cn } from '@/lib/utils';
 export default function DashboardPage() {
   const { user, session: authSession, profile, loading, signOut } = useAuth();
   const [sessions, setSessions] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalMessages: 0, filesEdited: 0 });
   const [fetchingSessions, setFetchingSessions] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -63,6 +65,7 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (data.sessions) setSessions(data.sessions);
+      if (data.stats) setStats(data.stats);
     } catch (error) {
       console.error('Fetch sessions error:', error);
     } finally {
@@ -173,8 +176,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-12">
         {[
           { label: 'Active Sessions', value: sessions.filter(s => s.status === 'active').length, icon: Video, color: 'text-primary' },
-          { label: 'Total Messages', value: '124', icon: MessageSquare, color: 'text-accent' },
-          { label: 'Files Edited', value: '18', icon: Code2, color: 'text-green-400' },
+          { label: 'Total Messages', value: stats.totalMessages, icon: MessageSquare, color: 'text-accent' },
+          { label: 'Total Sessions Attended', value: stats.filesEdited, icon: Users, color: 'text-green-400' },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}

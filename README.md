@@ -125,7 +125,7 @@ cp .env.local.example .env.local
 # Set: NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
 
 # Start development server
-npm run dev
+npx next dev --webpack 
 ```
 
 ---

@@ -79,7 +79,22 @@ export const getSessions = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    res.json({ sessions });
+    let totalMessages = 0;
+    if (sessions && sessions.length > 0) {
+      const sessionIds = sessions.map((s: any) => s.id);
+      
+      const { count } = await supabaseAdmin
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .in('session_id', sessionIds);
+        
+      totalMessages = count || 0;
+    }
+
+    // Since files are tracked implicitly per session, we correlate files edited to total sessions
+    const filesEdited = sessions ? sessions.length : 0;
+
+    res.json({ sessions, stats: { totalMessages, filesEdited } });
   } catch (error) {
     console.error('Get sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
