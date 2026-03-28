@@ -13,11 +13,15 @@ import { setupWebRTCNamespace } from './sockets/webrtc';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // Trust reverse proxy for rate limiting on deployed environments
 const server = http.createServer(app);
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin: any, callback: any) {
+    // Allow all origins
+    callback(null, true);
+  },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
