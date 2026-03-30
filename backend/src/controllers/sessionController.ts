@@ -320,3 +320,44 @@ export const getPublicUserSessions = async (req: Request, res: Response): Promis
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const deleteSession = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const mentorId = req.user!.sub;
+
+  try {
+    // 1. Verify mentor owns the session
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('mentor_id')
+      .eq('id', id)
+      .single();
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    if (session.mentor_id !== mentorId) {
+      res.status(403).json({ error: 'Not authorized to delete this session' });
+      return;
+    }
+
+    // 2. Delete the session (it should also delete cascade related data if configured in DB, 
+    // but here we manually delete if needed or rely on DB constraints)
+    const { error } = await supabaseAdmin
+      .from('sessions')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    res.json({ message: 'Session deleted successfully' });
+  } catch (error) {
+    console.error('Delete session error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

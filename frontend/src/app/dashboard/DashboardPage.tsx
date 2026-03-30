@@ -22,7 +22,8 @@ import {
   Layers,
   User,
   Users,
-  Settings
+  Settings,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -123,6 +124,29 @@ export default function DashboardPage() {
       toast.error(error.message);
     } finally {
       setJoining(false);
+    }
+  };
+
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this session? This action cannot be undone.')) return;
+    
+    try {
+      const { data: { session: currentSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
+      
+      if (!currentSession?.access_token) {
+        throw new Error('Authentication required.');
+      }
+
+      await apiFetch(`/sessions/${sessionId}`, {
+        method: 'DELETE',
+        token: currentSession.access_token
+      });
+      
+      toast.success('Session deleted');
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+    } catch (error: any) {
+      toast.error(error.message);
     }
   };
 
@@ -249,6 +273,15 @@ export default function DashboardPage() {
                     <span className="text-xs font-mono text-white/40 uppercase">Code:</span>
                     <span className="text-sm font-mono font-bold text-primary">{session.invite_code}</span>
                   </div>
+                  {isMentor && (
+                    <button
+                      onClick={(e) => handleDeleteSession(e, session.id)}
+                      className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                      title="Delete Session"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                   <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-white group-hover:translate-x-1 transition-all" />
                 </div>
               </motion.div>
