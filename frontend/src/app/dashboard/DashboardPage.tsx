@@ -242,22 +242,35 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {sessions.map((session) => (
-              <motion.div
-                key={session.id}
-                layout
-                className="group flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-white/5 hover:border-white/20 hover:bg-white/5 transition-all cursor-pointer"
-                onClick={() => router.push(`/session/${session.id}`)}
-              >
-                <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "w-12 h-12 rounded-xl flex items-center justify-center",
-                    session.status === 'active' ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
-                  )}>
-                    {session.status === 'active' ? <Clock className="w-6 h-6" /> : <Layers className="w-6 h-6" />}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg">{session.title}</h3>
+            {sessions.map((session) => {
+              const isExpired = session.status === 'ended' && 
+                (new Date().getTime() - new Date(session.updated_at).getTime()) / (1000 * 60 * 60) >= 24;
+
+              return (
+                <motion.div
+                  key={session.id}
+                  layout
+                  className={cn(
+                    "group flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-white/5 transition-all",
+                    isExpired ? "opacity-40 cursor-not-allowed" : "hover:border-white/20 hover:bg-white/5 cursor-pointer"
+                  )}
+                  onClick={() => !isExpired && router.push(`/session/${session.id}`)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      "w-12 h-12 rounded-xl flex items-center justify-center",
+                      session.status === 'active' ? "bg-green-500/10 text-green-400" : 
+                      isExpired ? "bg-white/5 text-white/20" : "bg-red-500/10 text-red-400"
+                    )}>
+                      {session.status === 'active' ? <Clock className="w-6 h-6" /> : <Layers className="w-6 h-6" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-lg">{session.title}</h3>
+                        {isExpired && (
+                          <span className="text-[10px] px-2 py-0.5 bg-white/5 text-white/40 rounded-full border border-white/10 uppercase font-black">Expired</span>
+                        )}
+                      </div>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3" /> {session.profiles?.display_name || 'System'}
@@ -273,19 +286,18 @@ export default function DashboardPage() {
                     <span className="text-xs font-mono text-white/40 uppercase">Code:</span>
                     <span className="text-sm font-mono font-bold text-primary">{session.invite_code}</span>
                   </div>
-                  {isMentor && (
-                    <button
-                      onClick={(e) => handleDeleteSession(e, session.id)}
-                      className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                      title="Delete Session"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => handleDeleteSession(e, session.id)}
+                    className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                    title={isMentor ? "Delete Session" : "Remove from list"}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                   <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-white group-hover:translate-x-1 transition-all" />
                 </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>

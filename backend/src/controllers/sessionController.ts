@@ -119,6 +119,18 @@ export const getSession = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Check if session has ended and if more than 24 hours have passed
+    if (session.status === 'ended') {
+      const endedAt = new Date(session.updated_at).getTime();
+      const now = new Date().getTime();
+      const differenceInHours = (now - endedAt) / (1000 * 60 * 60);
+
+      if (differenceInHours >= 24) {
+        res.status(403).json({ error: 'This session has expired and is no longer accessible.' });
+        return;
+      }
+    }
+
     res.json({ session });
   } catch (error) {
     console.error('Get session error:', error);
@@ -140,11 +152,23 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
       .from('sessions')
       .select('*')
       .eq('invite_code', invite_code.toUpperCase())
-      .eq('status', 'active')
-      .single();
+      .single(); // Removed status: 'active' filter to handle ended sessions and give better errors
 
     if (error || !session) {
-      res.status(404).json({ error: 'Session not found or has ended' });
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    if (session.status === 'ended') {
+      const endedAt = new Date(session.updated_at).getTime();
+      const now = new Date().getTime();
+      const differenceInHours = (now - endedAt) / (1000 * 60 * 60);
+
+      if (differenceInHours >= 24) {
+        res.status(403).json({ error: 'This session has expired and cannot be joined.' });
+      } else {
+        res.status(403).json({ error: 'This session has ended and is no longer accepting new participants.' });
+      }
       return;
     }
 
@@ -323,36 +347,49 @@ export const getPublicUserSessions = async (req: Request, res: Response): Promis
 
 export const deleteSession = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  const mentorId = req.user!.sub;
+  const userId = req.user!.sub;
+  const role = req.user!.role;
 
   try {
-    // 1. Verify mentor owns the session
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('mentor_id')
-      .eq('id', id)
-      .single();
+    if (role === 'mentor') {
+      // Mentors delete the entire session
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('mentor_id')
+        .eq('id', id)
+        .single();
 
-    if (!session) {
-      res.status(404).json({ error: 'Session not found' });
-      return;
-    }
+      if (!session) {
+        res.status(404).json({ error: 'Session not found' });
+        return;
+      }
 
-    if (session.mentor_id !== mentorId) {
-      res.status(403).json({ error: 'Not authorized to delete this session' });
-      return;
-    }
+      if (session.mentor_id !== userId) {
+        res.status(403).json({ error: 'Not authorized to delete this session' });
+        return;
+      }
 
-    // 2. Delete the session (it should also delete cascade related data if configured in DB, 
-    // but here we manually delete if needed or rely on DB constraints)
-    const { error } = await supabaseAdmin
-      .from('sessions')
-      .delete()
-      .eq('id', id);
+      const { error } = await supabaseAdmin
+        .from('sessions')
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      res.status(500).json({ error: error.message });
-      return;
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+    } else {
+      // Students "delete" the session by removing their participation record
+      const { error } = await supabaseAdmin
+        .from('session_participants')
+        .delete()
+        .eq('session_id', id)
+        .eq('student_id', userId);
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
     }
 
     res.json({ message: 'Session deleted successfully' });
