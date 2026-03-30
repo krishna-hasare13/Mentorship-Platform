@@ -95,6 +95,9 @@ export default function SessionRoomPage() {
       
       if (!authSession?.access_token) throw new Error('Not authenticated');
 
+      // Also notify via socket
+      chatSocket?.emit('end-session');
+
       await apiFetch(`/sessions/${id}/end`, {
         method: 'PATCH',
         token: authSession.access_token

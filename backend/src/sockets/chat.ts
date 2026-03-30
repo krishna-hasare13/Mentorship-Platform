@@ -43,9 +43,21 @@ export const setupChatNamespace = (io: Server) => {
 
     console.log(`User ${socket.data.user.sub} connected to chat room ${room}`);
 
+    // Broadcast Join Message (Small delay to ensure frontend is ready)
+    setTimeout(() => {
+      const joinMsg = {
+        id: `sys-${Date.now()}`,
+        session_id: sessionId,
+        user_id: null,
+        content: `${socket.data.user.display_name || 'A user'} joined the session`,
+        created_at: new Date().toISOString(),
+        profiles: null // Indicates system message
+      };
+      chatNamespace.to(room).emit('new-message', joinMsg);
+    }, 500);
+
     socket.on('send-message', async (content: string) => {
       try {
-        // Persist to Supabase
         const { data: message, error } = await supabaseAdmin
           .from('messages')
           .insert({
@@ -60,8 +72,6 @@ export const setupChatNamespace = (io: Server) => {
           .single();
 
         if (error) throw error;
-
-        // Broadcast to everyone in the room (including sender for sync)
         chatNamespace.to(room).emit('new-message', message);
       } catch (err) {
         console.error('Chat error:', err);
@@ -69,8 +79,31 @@ export const setupChatNamespace = (io: Server) => {
       }
     });
 
+    socket.on('end-session', () => {
+      if (socket.data.user.role !== 'mentor') return;
+      
+      const endMsg = {
+        id: `sys-end-${Date.now()}`,
+        session_id: sessionId,
+        user_id: null,
+        content: 'Mentor has ended the meeting',
+        created_at: new Date().toISOString(),
+        profiles: null
+      };
+      chatNamespace.to(room).emit('new-message', endMsg);
+    });
+
     socket.on('disconnect', () => {
       console.log(`User ${socket.data.user.sub} disconnected from chat`);
+      const leaveMsg = {
+        id: `sys-leave-${Date.now()}`,
+        session_id: sessionId,
+        user_id: null,
+        content: `${socket.data.user.display_name || 'A user'} left the meeting`,
+        created_at: new Date().toISOString(),
+        profiles: null
+      };
+      chatNamespace.to(room).emit('new-message', leaveMsg);
     });
   });
 };

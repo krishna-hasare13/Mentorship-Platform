@@ -75,7 +75,19 @@ export const ChatPanel = ({ socket, sessionId }: { socket: Socket | null, sessio
         className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide"
       >
         {messages.map((msg, i) => {
+          const isSystem = msg.profiles === null;
           const isMe = msg.user_id === user?.id;
+
+          if (isSystem) {
+            return (
+              <div key={msg.id || i} className="flex justify-center py-2 animate-in fade-in zoom-in-95 duration-500">
+                <span className="px-3 py-1 bg-white/5 border border-white/5 rounded-full text-[10px] font-bold text-white/20 uppercase tracking-tighter">
+                  {msg.content}
+                </span>
+              </div>
+            );
+          }
+
           return (
             <div 
               key={msg.id || i}
