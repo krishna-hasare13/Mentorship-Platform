@@ -31,17 +31,25 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     try {
       const decoded = jwt.verify(token, supabaseJwtSecret) as any;
       
-      if (decoded && decoded.sub) {
-        console.log('Local JWT Verification: Success');
-        const role = decoded.user_metadata?.role || decoded.app_metadata?.role || 'student';
-        req.user = {
-          sub: decoded.sub,
-          email: decoded.email || '',
-          role: (role === 'mentor' || role === 'student') ? role : 'student',
-          display_name: decoded.user_metadata?.display_name
-        };
-        return next();
-      }
+        if (decoded && decoded.sub) {
+          console.log('Local JWT Verification: Success');
+          
+          // Fetch role from profiles table as the definitive source
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('role, display_name')
+            .eq('id', decoded.sub)
+            .single();
+
+          const role = profile?.role || decoded.user_metadata?.role || decoded.app_metadata?.role || 'student';
+          req.user = {
+            sub: decoded.sub,
+            email: decoded.email || '',
+            role: (role === 'mentor' || role === 'student') ? role : 'student',
+            display_name: profile?.display_name || decoded.user_metadata?.display_name
+          };
+          return next();
+        }
     } catch (localErr: any) {
       console.log('Local JWT Verification failed:', localErr.message);
       // If it's just expired, don't waste time with remote fetch
@@ -56,11 +64,19 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     
     if (user && !error) {
       console.log('Remote Supabase Verification: Success');
+      
+      // Fetch role from profiles table as the definitive source
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role, display_name')
+        .eq('id', user.id)
+        .single();
+
       req.user = {
         sub: user.id,
         email: user.email || '',
-        role: user.user_metadata?.role || 'student',
-        display_name: user.user_metadata?.display_name
+        role: profile?.role || user.user_metadata?.role || 'student',
+        display_name: profile?.display_name || user.user_metadata?.display_name
       };
       return next();
     }

@@ -200,7 +200,7 @@ export default function DashboardPage() {
         {[
           { label: 'Active Sessions', value: sessions.filter(s => s.status === 'active').length, icon: Video, color: 'text-primary' },
           { label: 'Total Messages', value: stats.totalMessages, icon: MessageSquare, color: 'text-accent' },
-          { label: 'Total Sessions Attended', value: stats.filesEdited, icon: Users, color: 'text-green-400' },
+          { label: isMentor ? 'Sessions Managed' : 'Sessions Attended', value: stats.filesEdited, icon: Users, color: 'text-green-400' },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -288,7 +288,7 @@ export default function DashboardPage() {
                   </div>
                   <button
                     onClick={(e) => handleDeleteSession(e, session.id)}
-                    className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                    className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all md:opacity-0 md:group-hover:opacity-100"
                     title={isMentor ? "Delete Session" : "Remove from list"}
                   >
                     <Trash2 className="w-4 h-4" />

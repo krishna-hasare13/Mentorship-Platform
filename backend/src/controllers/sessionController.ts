@@ -7,26 +7,26 @@ const generateInviteCode = (): string => {
 };
 
 export const createSession = async (req: Request, res: Response): Promise<void> => {
-    const { title, language = 'javascript', waiting_room_enabled } = req.body;
-    const mentorId = req.user!.sub;
-  
-    if (!title) {
-      res.status(400).json({ error: 'Session title is required' });
-      return;
-    }
-  
-    try {
-      const inviteCode = generateInviteCode();
-  
-      const { data: session, error } = await supabaseAdmin
-        .from('sessions')
-        .insert({
-          mentor_id: mentorId,
-          title,
-          invite_code: inviteCode,
-          language,
-          status: 'active',
-        })
+  const { title, language = 'javascript', waiting_room_enabled } = req.body;
+  const mentorId = req.user!.sub;
+
+  if (!title) {
+    res.status(400).json({ error: 'Session title is required' });
+    return;
+  }
+
+  try {
+    const inviteCode = generateInviteCode();
+
+    const { data: session, error } = await supabaseAdmin
+      .from('sessions')
+      .insert({
+        mentor_id: mentorId,
+        title,
+        invite_code: inviteCode,
+        language,
+        status: 'active',
+      })
       .select('*')
       .single();
 
@@ -44,57 +44,55 @@ export const createSession = async (req: Request, res: Response): Promise<void> 
 
 export const getSessions = async (req: Request, res: Response): Promise<void> => {
   const userId = req.user!.sub;
-  const role = req.user!.role;
 
   try {
-    let query = supabaseAdmin
+    // 1. Fetch sessions where the user is the mentor
+    const { data: mentoredSessions } = await supabaseAdmin
+      .from('sessions')
+      .select('id')
+      .eq('mentor_id', userId);
+    
+    // 2. Fetch sessions where the user is a participant
+    const { data: joinedSessions } = await supabaseAdmin
+      .from('session_participants')
+      .select('session_id')
+      .eq('student_id', userId);
+
+    const mentoredIds = mentoredSessions?.map(s => s.id) || [];
+    const joinedIds = joinedSessions?.map(p => p.session_id) || [];
+    const allSessionIds = Array.from(new Set([...mentoredIds, ...joinedIds]));
+
+    if (allSessionIds.length === 0) {
+      res.json({ sessions: [], stats: { totalMessages: 0, filesEdited: 0 } });
+      return;
+    }
+
+    const { data: sessions, error } = await supabaseAdmin
       .from('sessions')
       .select(`
         *,
-        profiles!sessions_mentor_id_fkey(display_name, email)
+        profiles!sessions_mentor_id_fkey(display_name, email, avatar_url)
       `)
+      .in('id', allSessionIds)
       .order('created_at', { ascending: false });
-
-    if (role === 'mentor') {
-      query = query.eq('mentor_id', userId);
-    } else {
-      // Students see sessions they've joined
-      const { data: participations } = await supabaseAdmin
-        .from('session_participants')
-        .select('session_id')
-        .eq('student_id', userId);
-
-      const sessionIds = participations?.map((p) => p.session_id) || [];
-      if (sessionIds.length === 0) {
-        res.json({ sessions: [] });
-        return;
-      }
-      query = query.in('id', sessionIds);
-    }
-
-    const { data: sessions, error } = await query;
 
     if (error) {
       res.status(500).json({ error: error.message });
       return;
     }
 
-    let totalMessages = 0;
-    if (sessions && sessions.length > 0) {
-      const sessionIds = sessions.map((s: any) => s.id);
-      
-      const { count } = await supabaseAdmin
-        .from('messages')
-        .select('*', { count: 'exact', head: true })
-        .in('session_id', sessionIds);
-        
-      totalMessages = count || 0;
-    }
+    const { count: totalMessages } = await supabaseAdmin
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .in('session_id', allSessionIds);
 
-    // Since files are tracked implicitly per session, we correlate files edited to total sessions
-    const filesEdited = sessions ? sessions.length : 0;
-
-    res.json({ sessions, stats: { totalMessages, filesEdited } });
+    res.json({ 
+      sessions: sessions || [], 
+      stats: { 
+        totalMessages: totalMessages || 0, 
+        filesEdited: sessions?.length || 0 
+      } 
+    });
   } catch (error) {
     console.error('Get sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -119,7 +117,6 @@ export const getSession = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Check if session has ended and if more than 24 hours have passed
     if (session.status === 'ended') {
       const endedAt = new Date(session.updated_at).getTime();
       const now = new Date().getTime();
@@ -148,13 +145,13 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
   }
 
   try {
-    const { data: session, error } = await supabaseAdmin
+    const { data: session, error: findError } = await supabaseAdmin
       .from('sessions')
       .select('*')
       .eq('invite_code', invite_code.toUpperCase())
-      .single(); // Removed status: 'active' filter to handle ended sessions and give better errors
+      .single();
 
-    if (error || !session) {
+    if (findError || !session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
@@ -172,18 +169,21 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const status = session.waiting_room_enabled ? 'pending' : 'joined';
-
-    // Add participant record (upsert to handle reconnects)
-    await supabaseAdmin
+    // Add participant record - REMOVED 'status' column as it's missing from schema cache
+    const { error: upsertError } = await supabaseAdmin
       .from('session_participants')
       .upsert({
         session_id: session.id,
-        student_id: studentId,
-        status,
+        student_id: studentId
       }, { onConflict: 'session_id,student_id' });
 
-    res.json({ session, participant_status: status });
+    if (upsertError) {
+      console.error('Join upsert error:', upsertError);
+      res.status(500).json({ error: 'Failed to record participation: ' + upsertError.message });
+      return;
+    }
+
+    res.json({ session });
   } catch (error) {
     console.error('Join session error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -380,7 +380,7 @@ export const deleteSession = async (req: Request, res: Response): Promise<void> 
         res.status(500).json({ error: error.message });
         return;
       }
-      
+
       // If we are here, and there was no session record found initially, 
       // the participation delete will just happen (0 rows if not found).
     }

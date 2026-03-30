@@ -87,7 +87,7 @@ export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaSt
           dragElastic={0.1}
           dragMomentum={false}
           whileDrag={{ scale: 1.05, cursor: 'grabbing' }}
-          className="absolute bottom-4 right-4 w-32 md:w-48 aspect-video glass rounded-xl overflow-hidden border border-white/20 shadow-2xl z-20 cursor-grab touch-none"
+          className="absolute top-4 right-4 md:top-auto md:bottom-4 w-28 md:w-48 aspect-video glass rounded-xl overflow-hidden border border-white/20 shadow-2xl z-20 cursor-grab touch-none"
         >
           {localStream ? (
             <video
@@ -103,30 +103,30 @@ export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaSt
             </div>
           )}
         </motion.div>
-
+ 
         {/* Overlay Controls */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-6 py-3 glass rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 md:gap-3 px-3 md:px-6 py-2 md:py-3 glass rounded-2xl md:opacity-0 md:group-hover:opacity-100 transition-all duration-300 transform translate-y-0 md:translate-y-2 md:group-hover:translate-y-0 z-30">
           <button 
             onClick={toggleMic}
             className={cn(
-              "p-3 rounded-xl transition-all",
+              "p-2 md:p-3 rounded-xl transition-all",
               micOn ? "bg-white/10 text-white hover:bg-white/20" : "bg-destructive/20 text-destructive hover:bg-destructive/30"
             )}
           >
-            {micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+            {micOn ? <Mic className="w-4 h-4 md:w-5 md:h-5" /> : <MicOff className="w-4 h-4 md:w-5 md:h-5" />}
           </button>
           <button 
             onClick={toggleCamera}
             className={cn(
-              "p-3 rounded-xl transition-all",
+              "p-2 md:p-3 rounded-xl transition-all",
               cameraOn ? "bg-white/10 text-white hover:bg-white/20" : "bg-destructive/20 text-destructive hover:bg-destructive/30"
             )}
           >
-            {cameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+            {cameraOn ? <Video className="w-4 h-4 md:w-5 md:h-5" /> : <VideoOff className="w-4 h-4 md:w-5 md:h-5" />}
           </button>
           <div className="w-px h-6 bg-white/10 mx-1" />
-          <button className="p-3 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-all">
-            <Maximize2 className="w-5 h-5" />
+          <button className="p-2 md:p-3 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-all">
+            <Maximize2 className="w-4 h-4 md:w-5 md:h-5" />
           </button>
         </div>
       </div>
