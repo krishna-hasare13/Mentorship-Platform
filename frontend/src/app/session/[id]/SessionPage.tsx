@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '@/lib/api';
 
 export default function SessionRoomPage() {
   const { id } = useParams();
@@ -48,13 +49,14 @@ export default function SessionRoomPage() {
       try {
         // 1. Fetch Session Info
         const { data: { session: authSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions/${id}`, {
-          headers: {
-            'Authorization': `Bearer ${authSession?.access_token}`
-          }
+        
+        if (!authSession?.access_token) {
+          throw new Error('Authentication session missing. Please log in again.');
+        }
+
+        const data = await apiFetch(`/sessions/${id}`, {
+          token: authSession.access_token
         });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
         setSession(data.session);
 
         // 2. Request Media Permissions
@@ -90,11 +92,12 @@ export default function SessionRoomPage() {
     
     try {
       const { data: { session: authSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
-      await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions/${id}/end`, {
+      
+      if (!authSession?.access_token) throw new Error('Not authenticated');
+
+      await apiFetch(`/sessions/${id}/end`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${authSession?.access_token}`
-        }
+        token: authSession.access_token
       });
       window.location.href = '/dashboard';
     } catch (err) {

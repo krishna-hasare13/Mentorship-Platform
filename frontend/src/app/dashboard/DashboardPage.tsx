@@ -28,6 +28,7 @@ import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { apiFetch, getBackendUrl } from '@/lib/api';
 
 export default function DashboardPage() {
   const { user, session: authSession, profile, loading, signOut } = useAuth();
@@ -57,15 +58,12 @@ export default function DashboardPage() {
   }, [authSession, pathname]);
 
   const fetchSessions = async () => {
-    if (!authSession) return;
+    if (!authSession || !getBackendUrl()) return;
     setFetchingSessions(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions`, {
-        headers: {
-          'Authorization': `Bearer ${authSession.access_token}`
-        }
+      const data = await apiFetch('/sessions', {
+        token: authSession.access_token
       });
-      const data = await res.json();
       if (data.sessions) setSessions(data.sessions);
       if (data.stats) setStats(data.stats);
     } catch (error) {
@@ -75,26 +73,24 @@ export default function DashboardPage() {
     }
   };
 
-  const handleCreateSession = async (e: React.FormEvent) => {
+    const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
     try {
-      const { data: { session } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
+      const { data: { session: currentSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
       
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions`, {
+      if (!currentSession?.access_token) {
+        throw new Error('Authentication required. Please refresh the page and log in.');
+      }
+
+      const data = await apiFetch('/sessions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
-        },
+        token: currentSession.access_token,
         body: JSON.stringify({ 
           title: sessionTitle, 
           waiting_room_enabled: waitingRoomEnabled
         })
       });
-      
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
       
       toast.success('Session created!');
       router.push(`/session/${data.session.id}`);
@@ -109,19 +105,17 @@ export default function DashboardPage() {
     e.preventDefault();
     setJoining(true);
     try {
-      const { data: { session } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
+      const { data: { session: currentSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
       
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions/join`, {
+      if (!currentSession?.access_token) {
+        throw new Error('Authentication required. Please refresh the page and log in.');
+      }
+
+      const data = await apiFetch('/sessions/join', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
-        },
+        token: currentSession.access_token,
         body: JSON.stringify({ invite_code: inviteCode })
       });
-      
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
       
       toast.success('Joined session!');
       router.push(`/session/${data.session.id}`);

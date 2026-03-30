@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '@/components/providers/AuthProvider';
 
+import { getBackendUrl } from '@/lib/api';
+
 export const useSocket = (namespace: string, sessionId: string) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const { session } = useAuth();
@@ -12,7 +14,10 @@ export const useSocket = (namespace: string, sessionId: string) => {
   useEffect(() => {
     if (!sessionId) return;
 
-    const s = io(`${process.env.NEXT_PUBLIC_BACKEND_URL}${namespace}`, {
+    const baseUrl = getBackendUrl();
+    if (!baseUrl) return;
+
+    const s = io(`${baseUrl}${namespace}`, {
       auth: {
         token: session?.access_token
       },

@@ -6,6 +6,7 @@ import { Socket } from 'socket.io-client';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { apiFetch } from '@/lib/api';
 
 export const ChatPanel = ({ socket, sessionId }: { socket: Socket | null, sessionId: string }) => {
   const [messages, setMessages] = useState<any[]>([]);
@@ -18,12 +19,12 @@ export const ChatPanel = ({ socket, sessionId }: { socket: Socket | null, sessio
     const fetchHistory = async () => {
       try {
         const { data: { session: authSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/sessions/${sessionId}/messages`, {
-          headers: {
-            'Authorization': `Bearer ${authSession?.access_token}`
-          }
+        
+        if (!authSession?.access_token) return;
+
+        const data = await apiFetch(`/sessions/${sessionId}/messages`, {
+          token: authSession.access_token
         });
-        const data = await res.json();
         if (data.messages) setMessages(data.messages);
       } catch (err) {
         console.error('Fetch chat history error:', err);

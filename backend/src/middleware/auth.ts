@@ -23,7 +23,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
     
     if (error || !user) {
-      res.status(403).json({ error: 'Invalid or expired token' });
+      console.error('Supabase Auth Error:', error?.message || 'User not found');
+      res.status(403).json({ error: 'Invalid or expired token', detailed: error?.message });
       return;
     }
 
@@ -34,8 +35,9 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       display_name: user.user_metadata?.display_name
     };
     next();
-  } catch (error) {
-    res.status(403).json({ error: 'Invalid or expired token' });
+  } catch (error: any) {
+    console.error('Token Authentication Exception:', error.message);
+    res.status(403).json({ error: 'Invalid or expired token', detailed: error.message });
   }
 };
 
