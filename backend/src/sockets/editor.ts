@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { UserPayload } from '../types';
 import { supabaseAdmin } from '../config/supabase';
+import { loadSessionAccess } from '../lib/sessionGuards';
 
 interface EditorState {
   content: string;
@@ -40,44 +41,58 @@ export const setupEditorNamespace = (io: Server) => {
 
   editorNamespace.on('connection', (socket: Socket) => {
     const { sessionId } = socket.handshake.query;
-    if (!sessionId) {
+    if (typeof sessionId !== 'string' || !sessionId) {
       socket.disconnect();
       return;
     }
 
-    const room = `session:${sessionId}`;
-    socket.join(room);
+    loadSessionAccess(sessionId, socket.data.user.sub).then((access) => {
+      if (!access) {
+        socket.disconnect();
+        return;
+      }
 
-    // Send current content to new joiner
-    const currentState = sessionContent.get(sessionId as string) || { content: '', version: 0 };
-    socket.emit('editor-sync', currentState);
+      const room = `session:${sessionId}`;
+      socket.join(room);
 
-    socket.on('editor-change', (data: { content: string; version: number }) => {
-      // Simple last-write-wins sync
-      sessionContent.set(sessionId as string, data);
-      
-      // Broadcast to others in the room
-      socket.to(room).emit('editor-change', data);
-    });
+      // Send current content to new joiner
+      const currentState = sessionContent.get(sessionId) || { content: '', version: 0 };
+      socket.emit('editor-sync', currentState);
 
-    socket.on('language-change', (language: string) => {
-      socket.to(room).emit('language-change', language);
-    });
+      socket.on('editor-change', (data: { content: string; version: number }) => {
+        if (typeof data?.content !== 'string' || typeof data?.version !== 'number') {
+          return;
+        }
 
-    socket.on('editor-output', (data: any) => {
-      socket.to(room).emit('editor-output', data);
-    });
-
-    socket.on('cursor-move', (pos: { line: number, column: number }) => {
-      socket.to(room).emit('cursor-move', {
-        userId: socket.data.user.sub,
-        name: socket.data.user.display_name || 'User',
-        ...pos
+        // Simple last-write-wins sync
+        sessionContent.set(sessionId, data);
+        
+        // Broadcast to others in the room
+        socket.to(room).emit('editor-change', data);
       });
-    });
 
-    socket.on('disconnect', () => {
-      // Clean up if last user? (Optional for MVP, maybe keep content till session ends)
+      socket.on('language-change', (language: string) => {
+        if (typeof language !== 'string' || !language.trim()) return;
+        socket.to(room).emit('language-change', language);
+      });
+
+      socket.on('editor-output', (data: any) => {
+        socket.to(room).emit('editor-output', data);
+      });
+
+      socket.on('cursor-move', (pos: { line: number, column: number }) => {
+        if (typeof pos?.line !== 'number' || typeof pos?.column !== 'number') return;
+
+        socket.to(room).emit('cursor-move', {
+          userId: socket.data.user.sub,
+          name: socket.data.user.display_name || 'User',
+          ...pos
+        });
+      });
+
+      socket.on('disconnect', () => {
+        // Clean up if last user? (Optional for MVP, maybe keep content till session ends)
+      });
     });
   });
 };

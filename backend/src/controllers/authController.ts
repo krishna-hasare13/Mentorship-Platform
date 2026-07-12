@@ -39,15 +39,10 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       });
 
     if (profileError) {
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       res.status(500).json({ error: profileError.message });
       return;
     }
-
-    // Sign in to get JWT
-    const { data: signInData, error: signInError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email,
-    });
 
     // Return a session token
     const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
@@ -164,18 +159,27 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
   const { display_name, bio, skills, avatar_url, phone_number, linkedin_url, github_url, resume_url } = req.body;
   const userId = req.user!.sub;
 
+  const updates: Record<string, any> = {};
+
+  if (display_name !== undefined) updates.display_name = display_name;
+  if (bio !== undefined) updates.bio = bio;
+  if (skills !== undefined) updates.skills = skills;
+  if (avatar_url !== undefined) updates.avatar_url = avatar_url;
+  if (phone_number !== undefined) updates.phone_number = phone_number;
+  if (linkedin_url !== undefined) updates.linkedin_url = linkedin_url;
+  if (github_url !== undefined) updates.github_url = github_url;
+  if (resume_url !== undefined) updates.resume_url = resume_url;
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: 'At least one profile field must be provided' });
+    return;
+  }
+
   try {
     const { data: profile, error } = await supabaseAdmin
       .from('profiles')
       .update({
-        display_name,
-        bio,
-        skills,
-        avatar_url,
-        phone_number,
-        linkedin_url,
-        github_url,
-        resume_url,
+        ...updates,
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId)

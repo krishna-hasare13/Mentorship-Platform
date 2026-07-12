@@ -13,6 +13,20 @@ export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaSt
   const [cameraOn, setCameraOn] = useState(true);
 
   useEffect(() => {
+    if (!localStream) {
+      setMicOn(true);
+      setCameraOn(true);
+      return;
+    }
+
+    const audioTrack = localStream.getAudioTracks()[0];
+    const videoTrack = localStream.getVideoTracks()[0];
+
+    setMicOn(audioTrack ? audioTrack.enabled : true);
+    setCameraOn(videoTrack ? videoTrack.enabled : true);
+  }, [localStream]);
+
+  useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
@@ -27,15 +41,21 @@ export const VideoPanel = ({ localStream, remoteStream }: { localStream: MediaSt
 
   const toggleMic = () => {
     if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = !micOn);
-      setMicOn(!micOn);
+      const nextMicOn = !micOn;
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = nextMicOn;
+      });
+      setMicOn(nextMicOn);
     }
   };
 
   const toggleCamera = () => {
     if (localStream) {
-      localStream.getVideoTracks().forEach(track => track.enabled = !cameraOn);
-      setCameraOn(!cameraOn);
+      const nextCameraOn = !cameraOn;
+      localStream.getVideoTracks().forEach(track => {
+        track.enabled = nextCameraOn;
+      });
+      setCameraOn(nextCameraOn);
     }
   };
 

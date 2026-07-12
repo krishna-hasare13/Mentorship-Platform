@@ -1,31 +1,91 @@
 import { Request, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  generateUniqueInviteCode,
+  getParticipant,
+  getSessionById,
+  isSessionExpired,
+  loadSessionAccess,
+  normalizeInviteCode,
+} from '../lib/sessionGuards';
 
-const generateInviteCode = (): string => {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+const ALLOWED_LANGUAGES = new Set([
+  'javascript',
+  'typescript',
+  'python',
+  'java',
+  'cpp',
+  'csharp',
+  'go',
+  'html',
+  'css',
+  'markdown',
+]);
+
+const coerceBoolean = (value: unknown, fallback = false): boolean => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.toLowerCase() === 'true';
+  return fallback;
 };
 
+const coercePositiveInteger = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
+const getParamValue = (value: string | string[]): string => (Array.isArray(value) ? value[0] : value);
+
 export const createSession = async (req: Request, res: Response): Promise<void> => {
-  const { title, language = 'javascript', waiting_room_enabled } = req.body;
+  const { title, language = 'javascript', waiting_room_enabled, max_participants, scheduled_at } = req.body;
   const mentorId = req.user!.sub;
 
-  if (!title) {
-    res.status(400).json({ error: 'Session title is required' });
+  const normalizedTitle = typeof title === 'string' ? title.trim() : '';
+  const normalizedLanguage = typeof language === 'string' ? language.trim().toLowerCase() : '';
+
+  if (!normalizedTitle || normalizedTitle.length > 120) {
+    res.status(400).json({ error: 'Session title is required and must be 120 characters or fewer' });
+    return;
+  }
+
+  if (!ALLOWED_LANGUAGES.has(normalizedLanguage)) {
+    res.status(400).json({ error: 'Invalid session language' });
+    return;
+  }
+
+  const normalizedMaxParticipants = coercePositiveInteger(max_participants);
+  if (max_participants !== undefined && normalizedMaxParticipants === undefined) {
+    res.status(400).json({ error: 'max_participants must be a positive integer' });
+    return;
+  }
+
+  const normalizedScheduledAt = scheduled_at ? new Date(scheduled_at) : null;
+  if (scheduled_at && Number.isNaN(normalizedScheduledAt!.getTime())) {
+    res.status(400).json({ error: 'scheduled_at must be a valid ISO date string' });
     return;
   }
 
   try {
-    const inviteCode = generateInviteCode();
+    const inviteCode = await generateUniqueInviteCode();
 
     const { data: session, error } = await supabaseAdmin
       .from('sessions')
       .insert({
         mentor_id: mentorId,
-        title,
+        title: normalizedTitle,
         invite_code: inviteCode,
-        language,
+        language: normalizedLanguage,
         status: 'active',
+        waiting_room_enabled: coerceBoolean(waiting_room_enabled),
+        max_participants: normalizedMaxParticipants ?? null,
+        scheduled_at: normalizedScheduledAt ? normalizedScheduledAt.toISOString() : null,
       })
       .select('*')
       .single();
@@ -101,34 +161,39 @@ export const getSessions = async (req: Request, res: Response): Promise<void> =>
 
 export const getSession = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const sessionId = getParamValue(id);
+  const userId = req.user!.sub;
 
   try {
-    const { data: session, error } = await supabaseAdmin
+    const access = await loadSessionAccess(sessionId, userId);
+
+    if (!access) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const { session } = access;
+
+    const { data: sessionWithMentor, error } = await supabaseAdmin
       .from('sessions')
       .select(`
         *,
         profiles!sessions_mentor_id_fkey(display_name, email)
       `)
-      .eq('id', id)
+      .eq('id', sessionId)
       .single();
 
-    if (error || !session) {
+    if (error || !sessionWithMentor) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
 
-    if (session.status === 'ended') {
-      const endedAt = new Date(session.updated_at).getTime();
-      const now = new Date().getTime();
-      const differenceInHours = (now - endedAt) / (1000 * 60 * 60);
-
-      if (differenceInHours >= 24) {
-        res.status(403).json({ error: 'This session has expired and is no longer accessible.' });
-        return;
-      }
+    if (isSessionExpired(session)) {
+      res.status(403).json({ error: 'This session has expired and is no longer accessible.' });
+      return;
     }
 
-    res.json({ session });
+    res.json({ session: sessionWithMentor });
   } catch (error) {
     console.error('Get session error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -138,8 +203,9 @@ export const getSession = async (req: Request, res: Response): Promise<void> => 
 export const joinSession = async (req: Request, res: Response): Promise<void> => {
   const { invite_code } = req.body;
   const studentId = req.user!.sub;
+  const normalizedInviteCode = typeof invite_code === 'string' ? normalizeInviteCode(invite_code) : '';
 
-  if (!invite_code) {
+  if (!normalizedInviteCode) {
     res.status(400).json({ error: 'Invite code is required' });
     return;
   }
@@ -148,7 +214,7 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
     const { data: session, error: findError } = await supabaseAdmin
       .from('sessions')
       .select('*')
-      .eq('invite_code', invite_code.toUpperCase())
+      .eq('invite_code', normalizedInviteCode)
       .single();
 
     if (findError || !session) {
@@ -156,34 +222,48 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    if (session.status === 'ended') {
-      const endedAt = new Date(session.updated_at).getTime();
-      const now = new Date().getTime();
-      const differenceInHours = (now - endedAt) / (1000 * 60 * 60);
+    if (session.mentor_id === studentId) {
+      res.json({ session });
+      return;
+    }
 
-      if (differenceInHours >= 24) {
+    const existingParticipant = await getParticipant(session.id, studentId);
+    if (existingParticipant?.status === 'blocked' || existingParticipant?.status === 'rejected') {
+      res.status(403).json({ error: 'You are not allowed to join this session' });
+      return;
+    }
+
+    if (session.status !== 'active') {
+      if (isSessionExpired(session)) {
         res.status(403).json({ error: 'This session has expired and cannot be joined.' });
       } else {
-        res.status(403).json({ error: 'This session has ended and is no longer accepting new participants.' });
+        res.status(403).json({ error: 'This session is not accepting new participants.' });
       }
       return;
     }
 
-    // Add participant record - REMOVED 'status' column as it's missing from schema cache
+    if (existingParticipant) {
+      res.json({ session, participant: existingParticipant });
+      return;
+    }
+
+    const participantStatus = session.waiting_room_enabled ? 'pending' : 'joined';
+
     const { error: upsertError } = await supabaseAdmin
       .from('session_participants')
-      .upsert({
+      .insert({
         session_id: session.id,
-        student_id: studentId
-      }, { onConflict: 'session_id,student_id' });
+        student_id: studentId,
+        status: participantStatus,
+      });
 
     if (upsertError) {
-      console.error('Join upsert error:', upsertError);
+      console.error('Join insert error:', upsertError);
       res.status(500).json({ error: 'Failed to record participation: ' + upsertError.message });
       return;
     }
 
-    res.json({ session });
+    res.json({ session, participant: { session_id: session.id, student_id: studentId, status: participantStatus } });
   } catch (error) {
     console.error('Join session error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -192,17 +272,13 @@ export const joinSession = async (req: Request, res: Response): Promise<void> =>
 
 export const endSession = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const sessionId = getParamValue(id);
   const mentorId = req.user!.sub;
 
   try {
-    const { data: session, error: findError } = await supabaseAdmin
-      .from('sessions')
-      .select('*')
-      .eq('id', id)
-      .eq('mentor_id', mentorId)
-      .single();
+    const access = await loadSessionAccess(sessionId, mentorId);
 
-    if (findError || !session) {
+    if (!access || access.access !== 'owner') {
       res.status(404).json({ error: 'Session not found or not authorized' });
       return;
     }
@@ -210,7 +286,7 @@ export const endSession = async (req: Request, res: Response): Promise<void> => 
     const { error } = await supabaseAdmin
       .from('sessions')
       .update({ status: 'ended', updated_at: new Date().toISOString() })
-      .eq('id', id);
+      .eq('id', sessionId);
 
     if (error) {
       res.status(500).json({ error: error.message });
@@ -226,7 +302,17 @@ export const endSession = async (req: Request, res: Response): Promise<void> => 
 
 export const getMessages = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const sessionId = getParamValue(id);
   const { limit = 50, before } = req.query;
+  const userId = req.user!.sub;
+
+  const access = await loadSessionAccess(sessionId, userId);
+  if (!access) {
+    res.status(403).json({ error: 'Not authorized to view this session' });
+    return;
+  }
+
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
 
   try {
     let query = supabaseAdmin
@@ -235,12 +321,18 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
         *,
         profiles!messages_user_id_fkey(display_name)
       `)
-      .eq('session_id', id)
+      .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
-      .limit(Number(limit));
+      .limit(normalizedLimit);
 
     if (before) {
-      query = query.lt('created_at', before as string);
+      const beforeValue = new Date(before as string);
+      if (Number.isNaN(beforeValue.getTime())) {
+        res.status(400).json({ error: 'before must be a valid timestamp' });
+        return;
+      }
+
+      query = query.lt('created_at', beforeValue.toISOString());
     }
 
     const { data: messages, error } = await query;
@@ -258,6 +350,14 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
 };
 export const getParticipants = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const sessionId = getParamValue(id);
+  const userId = req.user!.sub;
+
+  const access = await loadSessionAccess(sessionId, userId);
+  if (!access) {
+    res.status(403).json({ error: 'Not authorized to view this session' });
+    return;
+  }
 
   try {
     const { data: participants, error } = await supabaseAdmin
@@ -266,7 +366,7 @@ export const getParticipants = async (req: Request, res: Response): Promise<void
         *,
         profiles!session_participants_student_id_fkey(display_name, avatar_url)
       `)
-      .eq('session_id', id);
+      .eq('session_id', sessionId);
 
     if (error) {
       res.status(500).json({ error: error.message });
@@ -282,33 +382,35 @@ export const getParticipants = async (req: Request, res: Response): Promise<void
 
 export const updateParticipantStatus = async (req: Request, res: Response): Promise<void> => {
   const { id, studentId } = req.params;
+  const sessionId = getParamValue(id);
+  const participantId = getParamValue(studentId);
   const { status } = req.body; // 'joined' | 'rejected' | 'blocked'
   const mentorId = req.user!.sub;
 
-  if (!['joined', 'rejected', 'blocked'].includes(status)) {
+  if (!['joined', 'rejected', 'blocked', 'pending'].includes(status)) {
     res.status(400).json({ error: 'Invalid status' });
     return;
   }
 
   try {
-    // 1. Verify mentor owns the session
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('mentor_id')
-      .eq('id', id)
-      .single();
+    const access = await loadSessionAccess(sessionId, mentorId);
 
-    if (!session || session.mentor_id !== mentorId) {
+    if (!access || access.access !== 'owner') {
       res.status(403).json({ error: 'Not authorized' });
       return;
     }
 
-    // 2. Update participant
+    const participant = await getParticipant(sessionId, participantId);
+    if (!participant) {
+      res.status(404).json({ error: 'Participant not found' });
+      return;
+    }
+
     const { error } = await supabaseAdmin
       .from('session_participants')
       .update({ status })
-      .eq('session_id', id)
-      .eq('student_id', studentId);
+      .eq('session_id', sessionId)
+      .eq('student_id', participantId);
 
     if (error) {
       res.status(500).json({ error: error.message });
@@ -322,13 +424,14 @@ export const updateParticipantStatus = async (req: Request, res: Response): Prom
   }
 };
 export const getPublicUserSessions = async (req: Request, res: Response): Promise<void> => {
-  const { userId } = req.params;
+  const { id } = req.params;
+  const mentorId = getParamValue(id);
 
   try {
     const { data: sessions, error } = await supabaseAdmin
       .from('sessions')
       .select('*')
-      .eq('mentor_id', userId)
+      .eq('mentor_id', mentorId)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(5);
@@ -347,22 +450,23 @@ export const getPublicUserSessions = async (req: Request, res: Response): Promis
 
 export const deleteSession = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const sessionId = getParamValue(id);
   const userId = req.user!.sub;
 
   try {
-    // 1. Check if the user is the mentor (owner)
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('mentor_id')
-      .eq('id', id)
-      .single();
+    const access = await loadSessionAccess(sessionId, userId);
 
-    if (session && session.mentor_id === userId) {
+    if (!access) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    if (access.access === 'owner') {
       // User is the owner -> delete the entire session
       const { error } = await supabaseAdmin
         .from('sessions')
         .delete()
-        .eq('id', id);
+        .eq('id', sessionId);
 
       if (error) {
         res.status(500).json({ error: error.message });
@@ -373,16 +477,13 @@ export const deleteSession = async (req: Request, res: Response): Promise<void> 
       const { error } = await supabaseAdmin
         .from('session_participants')
         .delete()
-        .eq('session_id', id)
+        .eq('session_id', sessionId)
         .eq('student_id', userId);
 
       if (error) {
         res.status(500).json({ error: error.message });
         return;
       }
-
-      // If we are here, and there was no session record found initially, 
-      // the participation delete will just happen (0 rows if not found).
     }
 
     res.json({ message: 'Session deleted successfully' });

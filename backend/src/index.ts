@@ -16,11 +16,23 @@ const app = express();
 app.set('trust proxy', 1); // Trust reverse proxy for rate limiting on deployed environments
 const server = http.createServer(app);
 
+const configuredOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const defaultOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const allowedOrigins = new Set([...configuredOrigins, ...defaultOrigins]);
+
 // CORS configuration
 const corsOptions = {
   origin: function (origin: any, callback: any) {
-    // Allow all origins
-    callback(null, true);
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`CORS blocked for origin ${origin}`));
   },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

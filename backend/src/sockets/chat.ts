@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { UserPayload } from '../types';
 import { supabaseAdmin } from '../config/supabase';
+import { loadSessionAccess } from '../lib/sessionGuards';
 
 export const setupChatNamespace = (io: Server) => {
   const chatNamespace = io.of('/chat');
@@ -33,77 +34,93 @@ export const setupChatNamespace = (io: Server) => {
 
   chatNamespace.on('connection', (socket: Socket) => {
     const { sessionId } = socket.handshake.query;
-    if (!sessionId) {
+    if (typeof sessionId !== 'string' || !sessionId) {
       socket.disconnect();
       return;
     }
 
-    const room = `session:${sessionId}`;
-    socket.join(room);
-
-    console.log(`User ${socket.data.user.sub} connected to chat room ${room}`);
-
-    // Broadcast Join Message (Small delay to ensure frontend is ready)
-    setTimeout(() => {
-      const joinMsg = {
-        id: `sys-${Date.now()}`,
-        session_id: sessionId,
-        user_id: null,
-        content: `${socket.data.user.display_name || 'A user'} joined the session`,
-        created_at: new Date().toISOString(),
-        profiles: null // Indicates system message
-      };
-      chatNamespace.to(room).emit('new-message', joinMsg);
-    }, 500);
-
-    socket.on('send-message', async (content: string) => {
-      try {
-        const { data: message, error } = await supabaseAdmin
-          .from('messages')
-          .insert({
-            session_id: sessionId as string,
-            user_id: socket.data.user.sub,
-            content: content
-          })
-          .select(`
-            *,
-            profiles!messages_user_id_fkey(display_name)
-          `)
-          .single();
-
-        if (error) throw error;
-        chatNamespace.to(room).emit('new-message', message);
-      } catch (err) {
-        console.error('Chat error:', err);
-        socket.emit('error', 'Failed to send message');
+    loadSessionAccess(sessionId, socket.data.user.sub).then((access) => {
+      if (!access) {
+        socket.disconnect();
+        return;
       }
-    });
 
-    socket.on('end-session', () => {
-      if (socket.data.user.role !== 'mentor') return;
-      
-      const endMsg = {
-        id: `sys-end-${Date.now()}`,
-        session_id: sessionId,
-        user_id: null,
-        content: 'Mentor has ended the meeting',
-        created_at: new Date().toISOString(),
-        profiles: null
-      };
-      chatNamespace.to(room).emit('new-message', endMsg);
-    });
+      const room = `session:${sessionId}`;
+      socket.join(room);
 
-    socket.on('disconnect', () => {
-      console.log(`User ${socket.data.user.sub} disconnected from chat`);
-      const leaveMsg = {
-        id: `sys-leave-${Date.now()}`,
-        session_id: sessionId,
-        user_id: null,
-        content: `${socket.data.user.display_name || 'A user'} left the meeting`,
-        created_at: new Date().toISOString(),
-        profiles: null
-      };
-      chatNamespace.to(room).emit('new-message', leaveMsg);
+      console.log(`User ${socket.data.user.sub} connected to chat room ${room}`);
+
+      // Broadcast Join Message (Small delay to ensure frontend is ready)
+      setTimeout(() => {
+        if (socket.disconnected) {
+          return;
+        }
+
+        const joinMsg = {
+          id: `sys-${Date.now()}`,
+          session_id: sessionId,
+          user_id: null,
+          content: `${socket.data.user.display_name || 'A user'} joined the session`,
+          created_at: new Date().toISOString(),
+          profiles: null // Indicates system message
+        };
+        chatNamespace.to(room).emit('new-message', joinMsg);
+      }, 500);
+
+      socket.on('send-message', async (content: string) => {
+        try {
+          if (typeof content !== 'string' || !content.trim()) {
+            socket.emit('error', 'Message content is required');
+            return;
+          }
+
+          const { data: message, error } = await supabaseAdmin
+            .from('messages')
+            .insert({
+              session_id: sessionId,
+              user_id: socket.data.user.sub,
+              content: content.trim()
+            })
+            .select(`
+              *,
+              profiles!messages_user_id_fkey(display_name)
+            `)
+            .single();
+
+          if (error) throw error;
+          chatNamespace.to(room).emit('new-message', message);
+        } catch (err) {
+          console.error('Chat error:', err);
+          socket.emit('error', 'Failed to send message');
+        }
+      });
+
+      socket.on('end-session', () => {
+        if (socket.data.user.role !== 'mentor') return;
+        
+        const endMsg = {
+          id: `sys-end-${Date.now()}`,
+          session_id: sessionId,
+          user_id: null,
+          content: 'Mentor has ended the meeting',
+          created_at: new Date().toISOString(),
+          profiles: null
+        };
+        chatNamespace.to(room).emit('new-message', endMsg);
+      });
+
+      socket.on('disconnect', () => {
+        console.log(`User ${socket.data.user.sub} disconnected from chat`);
+        const leaveMsg = {
+          id: `sys-leave-${Date.now()}`,
+          session_id: sessionId,
+          user_id: null,
+          content: `${socket.data.user.display_name || 'A user'} left the meeting`,
+          created_at: new Date().toISOString(),
+          profiles: null
+        };
+        chatNamespace.to(room).emit('new-message', leaveMsg);
+      });
     });
   });
 };

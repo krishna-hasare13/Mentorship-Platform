@@ -10,16 +10,17 @@ export const useSocket = (namespace: string, sessionId: string) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const { session } = useAuth();
   const socketRef = useRef<Socket | null>(null);
+  const accessToken = session?.access_token;
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !accessToken) return;
 
     const baseUrl = getBackendUrl();
     if (!baseUrl) return;
 
     const s = io(`${baseUrl}${namespace}`, {
       auth: {
-        token: session?.access_token
+        token: accessToken
       },
       query: {
         sessionId
@@ -46,15 +47,7 @@ export const useSocket = (namespace: string, sessionId: string) => {
       socketRef.current = null;
       setSocket(null);
     };
-  }, [namespace, sessionId]);
-
-  // Handle token updates without destroying the socket
-  useEffect(() => {
-    if (socketRef.current && session?.access_token) {
-      socketRef.current.auth = { token: session.access_token };
-      // If disconnected, it will use the new token on next reconnect
-    }
-  }, [session?.access_token]);
+  }, [namespace, sessionId, accessToken]);
 
   return socket;
 };

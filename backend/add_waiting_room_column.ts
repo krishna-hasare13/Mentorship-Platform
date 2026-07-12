@@ -13,7 +13,7 @@ async function addColumn() {
     try {
         await client.connect();
         
-        // Add the column if it doesn't exist
+        // Add the columns if they don't exist
         const sql = `
             DO $$ 
             BEGIN 
@@ -21,14 +21,27 @@ async function addColumn() {
                                WHERE table_name='sessions' AND column_name='waiting_room_enabled') THEN
                     ALTER TABLE sessions ADD COLUMN waiting_room_enabled BOOLEAN DEFAULT FALSE;
                 END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                               WHERE table_name='sessions' AND column_name='max_participants') THEN
+                    ALTER TABLE sessions ADD COLUMN max_participants INTEGER;
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                               WHERE table_name='sessions' AND column_name='scheduled_at') THEN
+                    ALTER TABLE sessions ADD COLUMN scheduled_at TIMESTAMPTZ;
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='session_participants' AND column_name='status') THEN
+                    ALTER TABLE session_participants ADD COLUMN status TEXT DEFAULT 'joined';
+                END IF;
             END $$;
         `;
         
         await client.query(sql);
-        console.log('Successfully added or verified existence of waiting_room_enabled column.');
+        console.log('Successfully added or verified existence of session columns.');
         
-        // Also check if status 'pending' is needed in session_participants
-        // But status is a string, so it's already flexible.
     } catch (err) {
         console.error('Error adding column:', err);
     } finally {

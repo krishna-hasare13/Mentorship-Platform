@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { UserPayload } from '../types';
 import { supabaseAdmin } from '../config/supabase';
+import { loadSessionAccess } from '../lib/sessionGuards';
 
 export const setupWebRTCNamespace = (io: Server) => {
   const webrtcNamespace = io.of('/webrtc');
@@ -32,32 +33,41 @@ export const setupWebRTCNamespace = (io: Server) => {
 
   webrtcNamespace.on('connection', (socket: Socket) => {
     const { sessionId } = socket.handshake.query;
-    if (!sessionId) {
+    if (typeof sessionId !== 'string' || !sessionId) {
       socket.disconnect();
       return;
     }
 
-    const room = `session:${sessionId}`;
-    socket.join(room);
+    loadSessionAccess(sessionId, socket.data.user.sub).then((access) => {
+      if (!access) {
+        socket.disconnect();
+        return;
+      }
 
-    // Notify others that a new peer joined ONLY when they are explicitly ready
-    socket.on('ready', () => {
-      socket.to(room).emit('peer-joined', { userId: socket.data.user.sub });
-    });
+      const room = `session:${sessionId}`;
+      socket.join(room);
 
-    // Signaling relay
-    socket.on('signal', (data: { target: string; signal: any }) => {
-      // Data contains the WebRTC signaling data (offer/answer/ice)
-      // We broadcast it to the room or a specific target if we had multiple peers
-      // For 1-on-1, just broadcasting to everyone else in the room works
-      socket.to(room).emit('signal', {
-        userId: socket.data.user.sub,
-        signal: data.signal
+      // Notify others that a new peer joined ONLY when they are explicitly ready
+      socket.on('ready', () => {
+        socket.to(room).emit('peer-joined', { userId: socket.data.user.sub });
       });
-    });
 
-    socket.on('disconnect', () => {
-      socket.to(room).emit('peer-left', { userId: socket.data.user.sub });
+      // Signaling relay
+      socket.on('signal', (data: { target: string; signal: any }) => {
+        if (!data || !data.signal) return;
+
+        // Data contains the WebRTC signaling data (offer/answer/ice)
+        // We broadcast it to the room or a specific target if we had multiple peers
+        // For 1-on-1, just broadcasting to everyone else in the room works
+        socket.to(room).emit('signal', {
+          userId: socket.data.user.sub,
+          signal: data.signal
+        });
+      });
+
+      socket.on('disconnect', () => {
+        socket.to(room).emit('peer-left', { userId: socket.data.user.sub });
+      });
     });
   });
 };
