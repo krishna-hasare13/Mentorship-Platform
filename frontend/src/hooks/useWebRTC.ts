@@ -80,17 +80,23 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
       // Capture sender refs right after peer creation while all tracks have kinds.
       // simple-peer calls pc.addTrack() synchronously in its constructor,
       // so getSenders() is populated immediately.
+      // Monitor ICE connection state for network drops
       const pc = (peer as any)._pc as RTCPeerConnection | undefined;
       if (pc) {
+        pc.addEventListener('iceconnectionstatechange', () => {
+          console.log('[WebRTC] ICE State:', pc.iceConnectionState);
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            console.log('[WebRTC] Network drop detected. Destroying peer and requesting renegotiation...');
+            peer.destroy();
+            if (socket.connected) {
+              socket.emit('ready'); // Ask for a fresh connection
+            }
+          }
+        });
+
         const senders = pc.getSenders();
         videoSenderRef.current = senders.find(s => s.track?.kind === 'video') ?? null;
         audioSenderRef.current = senders.find(s => s.track?.kind === 'audio') ?? null;
-        console.log(
-          'Captured senders — video:',
-          !!videoSenderRef.current,
-          'audio:',
-          !!audioSenderRef.current
-        );
       }
 
       if (signal && !peer.destroyed) {
@@ -102,7 +108,12 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
 
     // Update signaling listeners on current socket
     socket.on('peer-joined', ({ userId }: { userId: string }) => {
-      console.log('Peer joined, creating P2P offer...');
+      console.log('Peer joined or requested reconnect. Creating P2P offer...');
+      // If we already have a peer, it's stale (the other side dropped). Destroy it.
+      if (peerRef.current && !peerRef.current.destroyed) {
+        peerRef.current.destroy();
+        peerRef.current = null;
+      }
       createPeer(userId, socket, true);
     });
 
@@ -118,12 +129,24 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
       console.log('Signaling peer left. P2P connection may still be alive.');
     });
 
-    socket.emit('ready');
+    const onConnect = () => {
+      console.log('Socket (re)connected, emitting ready...');
+      socket.emit('ready');
+    };
+    socket.on('connect', onConnect);
+
+    // Initial ready if already connected
+    if (socket.connected) {
+      onConnect();
+    } else {
+      socket.emit('ready');
+    }
 
     return () => {
       socket.off('peer-joined');
       socket.off('signal');
       socket.off('peer-left');
+      socket.off('connect', onConnect);
       // NOTE: We do NOT destroy the peer here to survive socket refreshes!
     };
   }, [socket, localStream]);
@@ -149,10 +172,8 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
    */
   const replaceVideoTrack = async (newTrack: MediaStreamTrack | null): Promise<void> => {
     const sender = videoSenderRef.current;
-    if (!sender) {
-      console.warn('replaceVideoTrack: no video sender captured yet');
-      return;
-    }
+    if (!sender) return; // Normal when alone in the room
+
     try {
       await sender.replaceTrack(newTrack);
       console.log('replaceVideoTrack ->', newTrack ? 'new track' : 'null (camera off — LED off)');
@@ -168,10 +189,8 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
    */
   const replaceAudioTrack = async (newTrack: MediaStreamTrack | null): Promise<void> => {
     const sender = audioSenderRef.current;
-    if (!sender) {
-      console.warn('replaceAudioTrack: no audio sender captured yet');
-      return;
-    }
+    if (!sender) return; // Normal when alone in the room
+    
     try {
       await sender.replaceTrack(newTrack);
       console.log('replaceAudioTrack ->', newTrack ? 'new track' : 'null (mic off)');

@@ -22,12 +22,36 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '@/lib/api';
 
+const createEmptyStream = () => {
+  // Create silent audio track
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const dst = ctx.createMediaStreamDestination();
+  const audioTrack = dst.stream.getAudioTracks()[0];
+  audioTrack.enabled = false;
+
+  // Create black video track
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 480;
+  const canvasCtx = canvas.getContext('2d');
+  if (canvasCtx) {
+    canvasCtx.fillStyle = 'black';
+    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  const videoStream = canvas.captureStream(1);
+  const videoTrack = videoStream.getVideoTracks()[0];
+  videoTrack.enabled = false;
+
+  return new MediaStream([videoTrack, audioTrack]);
+};
+
 export default function SessionRoomPage() {
   const { id } = useParams();
   const { user, profile, loading } = useAuth();
   const [session, setSession] = useState<any>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const [mediaInitialized, setMediaInitialized] = useState(false);
   const [copied, setCopied] = useState(false);
   const router = useRouter();
 
@@ -38,6 +62,20 @@ export default function SessionRoomPage() {
 
   // WebRTC Hook
   const { remoteStream, replaceVideoTrack, replaceAudioTrack } = useWebRTC(webrtcSocket, localStream);
+
+  // Handle duplicate sessions (Two Tabs problem)
+  useEffect(() => {
+    if (!webrtcSocket) return;
+    const onDuplicate = () => {
+      webrtcSocket.disconnect();
+      editorSocket?.disconnect();
+      chatSocket?.disconnect();
+      toast.error('Session opened in another tab. You have been disconnected here.', { duration: 5000 });
+      router.push('/dashboard');
+    };
+    webrtcSocket.on('duplicate-session', onDuplicate);
+    return () => { webrtcSocket.off('duplicate-session', onDuplicate); };
+  }, [webrtcSocket, editorSocket, chatSocket, router]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -61,12 +99,21 @@ export default function SessionRoomPage() {
         setSession(data.session);
 
         // 2. Request Media Permissions
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        localStreamRef.current = stream;
-        setLocalStream(stream);
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          localStreamRef.current = stream;
+          setLocalStream(stream);
+        } catch (mediaErr: any) {
+          console.warn('Camera/Mic permissions denied or no hardware. Using empty stream:', mediaErr);
+          toast.error('Camera/Mic not available. You joined in view-only mode.');
+          const emptyStream = createEmptyStream();
+          localStreamRef.current = emptyStream;
+          setLocalStream(emptyStream);
+        }
+        setMediaInitialized(true);
       } catch (err: any) {
         toast.error('Could not initialize session: ' + err.message);
         router.push('/');
@@ -112,7 +159,7 @@ export default function SessionRoomPage() {
     }
   };
 
-  if (!session || !localStream) {
+  if (!session || !mediaInitialized || !localStream) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />

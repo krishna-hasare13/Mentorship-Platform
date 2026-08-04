@@ -45,6 +45,18 @@ export const setupWebRTCNamespace = (io: Server) => {
       }
 
       const room = `session:${sessionId}`;
+      
+      // Prevent "Two Tabs" issue: if this user is already in the room, disconnect their OLD socket
+      webrtcNamespace.in(room).fetchSockets().then(sockets => {
+        for (const s of sockets) {
+          if (s.data.user.sub === socket.data.user.sub && s.id !== socket.id) {
+            console.log(`[WebRTC] Disconnecting stale socket ${s.id} for user ${s.data.user.sub}`);
+            s.emit('duplicate-session');
+            s.disconnect(true);
+          }
+        }
+      });
+
       socket.join(room);
 
       // Notify others that a new peer joined ONLY when they are explicitly ready
