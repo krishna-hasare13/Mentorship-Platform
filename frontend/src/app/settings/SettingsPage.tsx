@@ -26,7 +26,6 @@ export default function SettingsPage() {
   const router = useRouter();
   const [updating, setUpdating] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const resumeInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     display_name: '',
@@ -35,7 +34,6 @@ export default function SettingsPage() {
     phone_number: '',
     linkedin_url: '',
     github_url: '',
-    resume_url: '',
     skills: [] as string[]
   });
   
@@ -53,7 +51,6 @@ export default function SettingsPage() {
         phone_number: profile.phone_number || '',
         linkedin_url: profile.linkedin_url || '',
         github_url: profile.github_url || '',
-        resume_url: profile.resume_url || '',
         skills: profile.skills || []
       });
     }
@@ -96,18 +93,7 @@ export default function SettingsPage() {
     setUpdating(false);
   };
 
-  const handleResumeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    setUpdating(true);
-    const url = await uploadFile(file, 'resumes');
-    if (url) {
-      setFormData(prev => ({ ...prev, resume_url: url }));
-      toast.success('Resume uploaded! Save changes to apply.');
-    }
-    setUpdating(false);
-  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,32 +314,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Resume Upload */}
-              <div className="space-y-4">
-                <label className="text-xs font-black uppercase tracking-widest text-white/30">Resume (PDF)</label>
-                <div className="flex flex-col gap-2">
-                  <button 
-                    type="button"
-                    onClick={() => resumeInputRef.current?.click()}
-                    className="w-full h-12 glass border-white/10 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold hover:bg-white/5 transition-all"
-                  >
-                    <LinkIcon className="w-4 h-4 text-primary" />
-                    {formData.resume_url ? 'Change Resume' : 'Choose PDF File'}
-                  </button>
-                  <input 
-                    type="file" 
-                    ref={resumeInputRef} 
-                    onChange={handleResumeChange} 
-                    className="hidden" 
-                    accept=".pdf" 
-                  />
-                  {formData.resume_url && (
-                    <p className="text-[10px] text-green-400 font-bold uppercase tracking-widest ml-1 flex items-center gap-1">
-                      <Check className="w-3 h-3" /> File Ready
-                    </p>
-                  )}
-                </div>
-              </div>
+
             </div>
 
             <div className="pt-4 flex items-center justify-between border-t border-white/5">
