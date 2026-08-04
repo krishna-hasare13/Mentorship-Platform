@@ -64,10 +64,11 @@ export default function DashboardPage() {
     try {
       // Always fetch a fresh token — the cached authSession may be stale/expired
       // after returning from a long session. getSession() auto-refreshes if needed.
-      const { data: { session: freshSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
+      const { data: { session: freshSession }, error: sessionError } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
 
-      if (!freshSession?.access_token) {
-        console.warn('No active session — skipping fetch');
+      if (sessionError || !freshSession?.access_token) {
+        console.warn('No active session or session error — signing out');
+        await signOut();
         return;
       }
 
@@ -76,8 +77,12 @@ export default function DashboardPage() {
       });
       if (data.sessions) setSessions(data.sessions);
       if (data.stats) setStats(data.stats);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Fetch sessions error:', error);
+      if (error.message?.includes('Auth session missing')) {
+        toast.error('Session expired. Please log in again.');
+        await signOut();
+      }
     } finally {
       setFetchingSessions(false);
     }
