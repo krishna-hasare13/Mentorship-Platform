@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import sessionRoutes from './routes/sessions';
+import iceRoutes from './routes/ice';
 import { setupChatNamespace } from './sockets/chat';
 import { setupEditorNamespace } from './sockets/editor';
 import { setupWebRTCNamespace } from './sockets/webrtc';
@@ -76,6 +77,7 @@ app.get('/health', (req, res) => {
 // REST Routes
 app.use('/auth', authRoutes);
 app.use('/sessions', sessionRoutes);
+app.use('/ice', iceRoutes);
 
 // Socket Namespaces
 setupChatNamespace(io);

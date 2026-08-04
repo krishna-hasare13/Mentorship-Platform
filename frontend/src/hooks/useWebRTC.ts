@@ -3,10 +3,39 @@
 import { useEffect, useRef, useState } from 'react';
 import Peer from 'simple-peer';
 import { Socket } from 'socket.io-client';
+import { apiFetch } from '@/lib/api';
+
+const FALLBACK_ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
+];
 
 export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null) => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
+  const videoSenderRef = useRef<RTCRtpSender | null>(null);
+  const audioSenderRef = useRef<RTCRtpSender | null>(null);
+  // ICE servers fetched from the backend (Metered.ca TURN credentials)
+  const [iceServers, setIceServers] = useState<any[]>(FALLBACK_ICE_SERVERS);
+  const iceServersRef = useRef<any[]>(FALLBACK_ICE_SERVERS);
+
+  // Fetch dynamic TURN/STUN credentials from backend on mount
+  useEffect(() => {
+    const fetchIceServers = async () => {
+      try {
+        const data = await apiFetch('/ice/servers');
+        if (data?.iceServers?.length > 0) {
+          setIceServers(data.iceServers);
+          iceServersRef.current = data.iceServers;
+          console.log('[ICE] Using', data.iceServers.length, 'servers from backend');
+        }
+      } catch (err) {
+        console.warn('[ICE] Could not fetch ICE servers, using fallback STUN:', err);
+      }
+    };
+
+    fetchIceServers();
+  }, []);
 
   useEffect(() => {
     if (!socket || !localStream) return;
@@ -20,15 +49,8 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
         trickle: true,
         stream: localStream,
         config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { 
-              urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], 
-              username: 'openrelayproject', 
-              credential: 'openrelayproject' 
-            }
-          ]
+          // Use dynamically fetched ICE servers (with TURN) instead of hardcoded free servers
+          iceServers: iceServersRef.current,
         }
       });
 
@@ -48,10 +70,28 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
       peer.on('close', () => {
         console.log('WebRTC P2P connection closed natively.');
         setRemoteStream(null);
+        videoSenderRef.current = null;
+        audioSenderRef.current = null;
         if (peerRef.current === peer) {
           peerRef.current = null;
         }
       });
+
+      // Capture sender refs right after peer creation while all tracks have kinds.
+      // simple-peer calls pc.addTrack() synchronously in its constructor,
+      // so getSenders() is populated immediately.
+      const pc = (peer as any)._pc as RTCPeerConnection | undefined;
+      if (pc) {
+        const senders = pc.getSenders();
+        videoSenderRef.current = senders.find(s => s.track?.kind === 'video') ?? null;
+        audioSenderRef.current = senders.find(s => s.track?.kind === 'audio') ?? null;
+        console.log(
+          'Captured senders — video:',
+          !!videoSenderRef.current,
+          'audio:',
+          !!audioSenderRef.current
+        );
+      }
 
       if (signal && !peer.destroyed) {
         peer.signal(signal);
@@ -96,8 +136,49 @@ export const useWebRTC = (socket: Socket | null, localStream: MediaStream | null
         peerRef.current.destroy();
         peerRef.current = null;
       }
+      videoSenderRef.current = null;
+      audioSenderRef.current = null;
     };
   }, []);
 
-  return { remoteStream };
+  /**
+   * Replace the video track in the active WebRTC peer connection.
+   * Pass null  -> stops sending video AND releases camera hardware (LED turns off)
+   * Pass track -> resumes sending video with the new track
+   * Uses RTCRtpSender.replaceTrack() — no renegotiation with the backend needed.
+   */
+  const replaceVideoTrack = async (newTrack: MediaStreamTrack | null): Promise<void> => {
+    const sender = videoSenderRef.current;
+    if (!sender) {
+      console.warn('replaceVideoTrack: no video sender captured yet');
+      return;
+    }
+    try {
+      await sender.replaceTrack(newTrack);
+      console.log('replaceVideoTrack ->', newTrack ? 'new track' : 'null (camera off — LED off)');
+    } catch (err) {
+      console.error('replaceVideoTrack failed:', err);
+    }
+  };
+
+  /**
+   * Replace the audio track in the active WebRTC peer connection.
+   * Pass null  -> mutes mic at the peer-connection level
+   * Pass track -> resumes sending audio
+   */
+  const replaceAudioTrack = async (newTrack: MediaStreamTrack | null): Promise<void> => {
+    const sender = audioSenderRef.current;
+    if (!sender) {
+      console.warn('replaceAudioTrack: no audio sender captured yet');
+      return;
+    }
+    try {
+      await sender.replaceTrack(newTrack);
+      console.log('replaceAudioTrack ->', newTrack ? 'new track' : 'null (mic off)');
+    } catch (err) {
+      console.error('replaceAudioTrack failed:', err);
+    }
+  };
+
+  return { remoteStream, replaceVideoTrack, replaceAudioTrack };
 };

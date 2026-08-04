@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useSocket } from '@/hooks/useSocket';
@@ -27,6 +27,7 @@ export default function SessionRoomPage() {
   const { user, profile, loading } = useAuth();
   const [session, setSession] = useState<any>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [copied, setCopied] = useState(false);
   const router = useRouter();
 
@@ -36,7 +37,7 @@ export default function SessionRoomPage() {
   const chatSocket = useSocket('/chat', id as string);
 
   // WebRTC Hook
-  const { remoteStream } = useWebRTC(webrtcSocket, localStream);
+  const { remoteStream, replaceVideoTrack, replaceAudioTrack } = useWebRTC(webrtcSocket, localStream);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -64,6 +65,7 @@ export default function SessionRoomPage() {
           video: true,
           audio: true,
         });
+        localStreamRef.current = stream;
         setLocalStream(stream);
       } catch (err: any) {
         toast.error('Could not initialize session: ' + err.message);
@@ -76,7 +78,9 @@ export default function SessionRoomPage() {
     }
 
     return () => {
-      localStream?.getTracks().forEach(track => track.stop());
+      // Use ref to avoid stale closure — always stop the live stream tracks
+      localStreamRef.current?.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     };
   }, [id, user]);
 
@@ -178,7 +182,13 @@ export default function SessionRoomPage() {
           animate={{ opacity: 1, x: 0 }}
           className="col-span-12 lg:col-span-4 min-h-[300px] lg:min-h-0"
         >
-          <VideoPanel localStream={localStream} remoteStream={remoteStream} />
+          <VideoPanel
+            localStream={localStream}
+            remoteStream={remoteStream}
+            socket={webrtcSocket}
+            replaceVideoTrack={replaceVideoTrack}
+            replaceAudioTrack={replaceAudioTrack}
+          />
         </motion.div>
 
         {/* Center: Editor */}

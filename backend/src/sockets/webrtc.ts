@@ -65,6 +65,15 @@ export const setupWebRTCNamespace = (io: Server) => {
         });
       });
 
+      // Media state relay — when a peer toggles camera/mic, broadcast to the room
+      socket.on('media-state', (data: { micOn: boolean; cameraOn: boolean }) => {
+        socket.to(room).emit('peer-media-state', {
+          userId: socket.data.user.sub,
+          micOn: data.micOn,
+          cameraOn: data.cameraOn
+        });
+      });
+
       socket.on('disconnect', () => {
         socket.to(room).emit('peer-left', { userId: socket.data.user.sub });
       });
