@@ -59,11 +59,20 @@ export default function DashboardPage() {
   }, [authSession, pathname]);
 
   const fetchSessions = async () => {
-    if (!authSession || !getBackendUrl()) return;
+    if (!getBackendUrl()) return;
     setFetchingSessions(true);
     try {
+      // Always fetch a fresh token — the cached authSession may be stale/expired
+      // after returning from a long session. getSession() auto-refreshes if needed.
+      const { data: { session: freshSession } } = await (await import('@/lib/supabase/client')).createClient().auth.getSession();
+
+      if (!freshSession?.access_token) {
+        console.warn('No active session — skipping fetch');
+        return;
+      }
+
       const data = await apiFetch('/sessions', {
-        token: authSession.access_token
+        token: freshSession.access_token
       });
       if (data.sessions) setSessions(data.sessions);
       if (data.stats) setStats(data.stats);

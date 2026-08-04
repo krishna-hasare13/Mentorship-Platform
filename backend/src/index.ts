@@ -19,7 +19,7 @@ const server = http.createServer(app);
 
 const configuredOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, '')) // strip trailing slash
   .filter(Boolean);
 
 const defaultOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
